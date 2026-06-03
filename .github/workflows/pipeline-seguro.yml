@@ -63,7 +63,7 @@ jobs:
           gh pr close ${{ github.event.pull_request.number }}
 
           # 3. Crear un Issue para revisión obligatoria del equipo
-          gh issue create --title "Vulnerabilidad detectada en PR #${{ github.event.pull_request.number }}" --body "Se detectó código inseguro en el PR. Revisión requerida." --label "fixing-required"
+          gh issue create --title "Vulnerabilidad detectada en PR #${{ github.event.pull_request.number }}" --body "Se detectó código inseguro en el PR. Revisión requerida."
 
           # 4. Enviar notificación urgente a Telegram vía cURL (sin actions de terceros)
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \

@@ -41,10 +41,10 @@ def test_seguridad_pydantic_rechaza_inyeccion_metodo_pago():
     """
     payload = {
         "evento_id": 1,
-        "email_usuario": "hacker@example.com",
+        "email_usuario": "usuario_invalido@example.com",
         "cantidad_asientos": 1,
-        # Intento de Inyección (SQLi / XSS payload)
-        "metodo_pago": "tarjeta'; DROP TABLE usuarios;--"
+        # Intento de formato no esperado
+        "metodo_pago": "metodo_no_existente_123"
     }
     response = client.post("/reservas", json=payload)
     

@@ -76,7 +76,7 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
             -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
-            -d text="GATEKEEPER PASS: El código del PR #${{ github.event.pull_request.number }} pasó las pruebas de seguridad ML."
+            -d text="✅GATEKEEPER PASS: El código del PR #${{ github.event.pull_request.number }} pasó las pruebas de seguridad ML."
 
   # ==============================================================================
   # JOB 2: MERGE AUTOMÁTICO Y PRUEBAS FUNCIONALES
@@ -105,12 +105,12 @@ jobs:
       - name: Instalar dependencias funcionales y pytest
         run: |
           python -m pip install --upgrade pip
-          # Asumimos que los requerimientos del proyecto están en requirements.txt
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          pip install pytest
+          # Instalamos los requerimientos desde la nueva carpeta backend
+          if [ -f backend/requirements.txt ]; then pip install -r backend/requirements.txt; fi
 
       - name: Ejecutar pruebas unitarias (Pytest)
         run: |
+          cd backend
           pytest tests/
 
       # ── MANEJO DE FALLO EN PRUEBAS ──

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Módulo ml_pipeline - Pipeline de ML para detección de vulnerabilidades.
+Módulo pipeline - Pipeline de ML para detección de vulnerabilidades.
 
 FASE 1: Ingesta de datos y feature engineering (script offline)
 FASE 2: Workflow CI/CD de GitHub Actions (YAML)

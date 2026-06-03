@@ -2,7 +2,7 @@
 
 Este documento describe exhaustivamente la **Fase 1** del proyecto integrador de Desarrollo de Software Seguro. En esta etapa se desarrolló y estabilizó el pipeline de Machine Learning encargado de detectar fragmentos de código vulnerable. 
 
-El código fuente de esta fase reside en el script [fase1_ingesta_feature_engineering.py](file:///c:/Users/Abner/Desktop/Semestre1-2026/softareSeguro/ProyectoU2/ml_pipeline/fase1_ingesta_feature_engineering.py).
+El código fuente de esta fase reside en el script [fase1_ingesta_feature_engineering.py](file:///c:/Users/Abner/Desktop/Semestre1-2026/softareSeguro/ProyectoU2/pipeline/fase1_ingesta_feature_engineering.py).
 
 ---
 
@@ -61,7 +61,7 @@ Al finalizar la inyección de características y estabilizar la validación cruz
 - **Accuracy Promedio en Cross-Validation (10 pliegues):** `87.33%`
 - **Desviación Estándar:** `0.0130` (Demuestra una alta estabilidad del modelo)
 
-El modelo está preparado para producción. Los siguientes archivos (artefactos) fueron guardados exitosamente en la carpeta `ml_pipeline/models/`:
+El modelo está preparado para producción. Los siguientes archivos (artefactos) fueron guardados exitosamente en la carpeta `pipeline/models/`:
 1. `rf_vulnerability_detector.joblib` (El modelo pre-entrenado RandomForest)
 2. `tfidf_vectorizer.joblib` (El vectorizador textual entrenado)
 3. `model_metadata.joblib` (Versiones y configuración)

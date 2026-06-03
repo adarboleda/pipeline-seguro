@@ -23,60 +23,60 @@ jobs:
     env:
       # Token necesario para autenticar la CLI de GitHub
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
+
     steps:
-      - name: 📥 Checkout del código
+      - name: Checkout del código
         uses: actions/checkout@v4
 
-      - name: 🐍 Setup de Python 3.10
+      - name: Setup de Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: 📦 Instalar dependencias del modelo de ML
+      - name: Instalar dependencias del modelo de ML
         run: |
           python -m pip install --upgrade pip
           pip install scikit-learn pandas joblib
 
-      - name: 🔍 Extraer cambios del Pull Request (diff)
+      - name: Extraer cambios del Pull Request (diff)
         # Extraemos el código modificado directamente con la CLI de GitHub para evitar descargar actions de terceros
         run: |
           gh pr diff ${{ github.event.pull_request.number }} > cambios.diff
           echo "Se ha extraído el código modificado en el PR."
 
-      - name: 🧠 Ejecutar Análisis de Seguridad (Inferencia)
+      - name: Ejecutar Análisis de Seguridad (Inferencia)
         # Asumimos que el script 'analizador_ci.py' leerá el diff, aplicará el modelo .joblib
         # y si encuentra código vulnerable finalizará con exit 1.
         run: |
           python scripts/analizador_ci.py cambios.diff
 
       # ── MANEJO DE FALLO (SE DETECTÓ CÓDIGO VULNERABLE) ──
-      - name: 🚨 Acciones correctivas ante código VULNERABLE
+      - name: Acciones correctivas ante código VULNERABLE
         if: failure()
         run: |
           echo "Ejecutando protocolo de bloqueo de Pull Request..."
-          
+
           # 1. Comentar en el PR informando el rechazo con probabilidad (leyendo el reporte generado por Python)
           gh pr comment ${{ github.event.pull_request.number }} --body-file reporte_seguridad.txt
-          
+
           # 2. Cerrar el Pull Request de forma inmediata
           gh pr close ${{ github.event.pull_request.number }}
-          
+
           # 3. Crear un Issue para revisión obligatoria del equipo
           gh issue create --title "Vulnerabilidad detectada en PR #${{ github.event.pull_request.number }}" --body "Se detectó código inseguro en el PR. Revisión requerida." --label "fixing-required"
-          
+
           # 4. Enviar notificación urgente a Telegram vía cURL (sin actions de terceros)
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
             -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
             -d text="🚨 ALERTA CRÍTICA: Se ha bloqueado el PR #${{ github.event.pull_request.number }} por inyección de código vulnerable."
 
       # ── MANEJO DE ÉXITO (EL CÓDIGO ES SEGURO) ──
-      - name: ✅ Notificar éxito de seguridad
+      - name: Notificar éxito de seguridad
         if: success()
         run: |
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
             -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
-            -d text="✅ GATEKEEPER PASS: El código del PR #${{ github.event.pull_request.number }} pasó las pruebas de seguridad ML."
+            -d text="GATEKEEPER PASS: El código del PR #${{ github.event.pull_request.number }} pasó las pruebas de seguridad ML."
 
   # ==============================================================================
   # JOB 2: MERGE AUTOMÁTICO Y PRUEBAS FUNCIONALES
@@ -87,34 +87,34 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
     steps:
-      - name: 📥 Checkout del código
+      - name: Checkout del código
         uses: actions/checkout@v4
 
-      - name: 🔀 Merge automático del PR a la rama 'test'
+      - name: Merge automático del PR a la rama 'test'
         # Hacemos merge automático ya que pasó el filtro de seguridad (Job 1)
         run: |
           gh pr merge ${{ github.event.pull_request.number }} --auto --merge
 
-      - name: 🐍 Setup de Python 3.10 para pruebas
+      - name: Setup de Python 3.10 para pruebas
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: 📦 Instalar dependencias funcionales y pytest
+      - name: Instalar dependencias funcionales y pytest
         run: |
           python -m pip install --upgrade pip
           # Asumimos que los requerimientos del proyecto están en requirements.txt
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install pytest
 
-      - name: 🧪 Ejecutar pruebas unitarias (Pytest)
+      - name: Ejecutar pruebas unitarias (Pytest)
         run: |
           pytest tests/
 
       # ── MANEJO DE FALLO EN PRUEBAS ──
-      - name: ❌ Notificar fallo de pruebas a Telegram
+      - name: Notificar fallo de pruebas a Telegram
         if: failure()
         run: |
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
@@ -124,7 +124,7 @@ jobs:
           gh pr edit ${{ github.event.pull_request.number }} --add-label "tests-failed"
 
       # ── MANEJO DE ÉXITO EN PRUEBAS ──
-      - name: ✅ Notificar éxito de pruebas a Telegram
+      - name: Notificar éxito de pruebas a Telegram
         if: success()
         run: |
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
@@ -140,26 +140,26 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      
+
     steps:
-      - name: 📥 Checkout de la rama 'test'
+      - name: Checkout de la rama 'test'
         uses: actions/checkout@v4
         with:
           ref: test
 
-      - name: 🚀 Crear y fusionar Pull Request hacia 'main'
+      - name: Crear y fusionar Pull Request hacia 'main'
         # Promocionamos el código probado desde 'test' hacia 'main'
         run: |
           gh pr create --base main --head test --title "Deploy to Production" --body "Automated merge from test" > pr_url.txt
           PR_URL=$(cat pr_url.txt)
           gh pr merge $PR_URL --auto --merge
 
-      - name: 🐳 Disparar webhook de despliegue en Render
+      - name: Disparar webhook de despliegue en Render
         # Activamos el hook de despliegue de Render para reconstruir y desplegar el contenedor Docker
         run: |
           curl -s -X POST ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
 
-      - name: 🎉 Notificación final de Despliegue Exitoso
+      - name: Notificación final de Despliegue Exitoso
         if: success()
         run: |
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \

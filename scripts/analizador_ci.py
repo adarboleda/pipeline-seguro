@@ -1,0 +1,230 @@
+import sys
+import os
+import ast
+import joblib
+import numpy as np
+from scipy.sparse import hstack
+from typing import Dict, List
+
+# =============================================================================
+# RE-IMPLEMENTACIÓN DEL ASTFeatureExtractor
+# (Extraído de la Fase 1 para mantener el script autocontenido)
+# =============================================================================
+class ASTFeatureExtractor(ast.NodeVisitor):
+    DANGEROUS_FUNCTIONS: List[str] = [
+        "eval",
+        "exec",
+        "subprocess.Popen",
+        "subprocess.call",
+        "os.system",
+    ]
+
+    _SIMPLE_DANGEROUS = {"eval", "exec"}
+    _COMPOUND_DANGEROUS = {
+        ("subprocess", "Popen"),
+        ("subprocess", "call"),
+        ("os", "system"),
+    }
+
+    def __init__(self):
+        self._reset()
+
+    def _reset(self):
+        self.ast_depth: int = 0
+        self.dangerous_func_count: int = 0
+        self.total_calls: int = 0
+        self.num_imports: int = 0
+        self.has_string_concat: int = 0
+        self.num_exception_handlers: int = 0
+
+    def _compute_depth(self, node: ast.AST, current_depth: int = 0) -> int:
+        max_depth = current_depth
+        for child in ast.iter_child_nodes(node):
+            child_depth = self._compute_depth(child, current_depth + 1)
+            max_depth = max(max_depth, child_depth)
+        return max_depth
+
+    def visit_Call(self, node: ast.Call):
+        self.total_calls += 1
+        if isinstance(node.func, ast.Name):
+            if node.func.id in self._SIMPLE_DANGEROUS:
+                self.dangerous_func_count += 1
+        elif isinstance(node.func, ast.Attribute):
+            if isinstance(node.func.value, ast.Name):
+                pair = (node.func.value.id, node.func.attr)
+                if pair in self._COMPOUND_DANGEROUS:
+                    self.dangerous_func_count += 1
+        self.generic_visit(node)
+
+    def visit_Import(self, node: ast.Import):
+        self.num_imports += len(node.names)
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node: ast.ImportFrom):
+        self.num_imports += len(node.names) if node.names else 1
+        self.generic_visit(node)
+
+    def visit_BinOp(self, node: ast.BinOp):
+        if isinstance(node.op, ast.Add):
+            self.has_string_concat = 1
+        self.generic_visit(node)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler):
+        self.num_exception_handlers += 1
+        self.generic_visit(node)
+
+    def extract(self, code_snippet: str) -> Dict[str, int]:
+        self._reset()
+        try:
+            tree = ast.parse(code_snippet)
+            self.ast_depth = self._compute_depth(tree)
+            self.visit(tree)
+        except (SyntaxError, IndentationError):
+            self.ast_depth = -1
+        except Exception:
+            self.ast_depth = -1
+        
+        return {
+            "ast_depth": self.ast_depth,
+            "dangerous_func_count": self.dangerous_func_count,
+            "total_calls": self.total_calls,
+            "num_imports": self.num_imports,
+            "has_string_concat": self.has_string_concat,
+            "num_exception_handlers": self.num_exception_handlers,
+        }
+
+# =============================================================================
+# FUNCIONES DE APOYO
+# =============================================================================
+
+def parse_diff(diff_path: str) -> str:
+    """Extrae únicamente las líneas añadidas del archivo .diff (ignorando metadatos)."""
+    added_lines = []
+    with open(diff_path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            if line.startswith("+++"):
+                continue
+            if line.startswith("+"):
+                # Remover el '+' inicial
+                added_lines.append(line[1:])
+    return "".join(added_lines)
+
+def robust_ast_extract(code_snippet: str, extractor: ASTFeatureExtractor) -> Dict[str, int]:
+    """Extrae features AST, envolviendo el código en un wrapper si hay error sintáctico."""
+    features = extractor.extract(code_snippet)
+    
+    # Si hubo error (IndentationError, etc.) la profundidad será -1
+    if features["ast_depth"] == -1:
+        # Intentar envolver en una función para dar contexto válido
+        wrapped_code = "def wrapper():\n" + "\n".join(["    " + line for line in code_snippet.split("\n")])
+        features = extractor.extract(wrapped_code)
+    
+    return features
+
+# =============================================================================
+# FLUJO PRINCIPAL DE INFERENCIA
+# =============================================================================
+
+def main():
+    if len(sys.argv) < 2:
+        print("Uso: python analizador_ci.py <ruta_al_diff>")
+        sys.exit(1)
+        
+    diff_path = sys.argv[1]
+    if not os.path.exists(diff_path):
+        print(f"Error: No se encontró el archivo diff en {diff_path}")
+        sys.exit(1)
+        
+    # 1. Parsear diff
+    code_snippet = parse_diff(diff_path)
+    if not code_snippet.strip():
+        print("No se encontraron adiciones de código en el PR. Omitiendo análisis.")
+        sys.exit(0)
+        
+    # 2. Cargar Modelos
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    models_dir = os.path.join(base_dir, "models")
+    rf_model_path = os.path.join(models_dir, "rf_vulnerability_detector.joblib")
+    tfidf_path = os.path.join(models_dir, "tfidf_vectorizer.joblib")
+    
+    if not os.path.exists(rf_model_path) or not os.path.exists(tfidf_path):
+        print(f"Error: No se encontraron los modelos .joblib en la carpeta {models_dir}")
+        sys.exit(1)
+        
+    rf_model = joblib.load(rf_model_path)
+    tfidf = joblib.load(tfidf_path)
+    
+    # 3. Vectorización TF-IDF
+    tfidf_features = tfidf.transform([code_snippet])
+    
+    # 4. Extracción AST Robustamente
+    extractor = ASTFeatureExtractor()
+    ast_features_dict = robust_ast_extract(code_snippet, extractor)
+    
+    # Asegurar orden exacto de las columnas numéricas
+    ast_features_array = np.array([[
+        ast_features_dict["ast_depth"],
+        ast_features_dict["dangerous_func_count"],
+        ast_features_dict["total_calls"],
+        ast_features_dict["num_imports"],
+        ast_features_dict["has_string_concat"],
+        ast_features_dict["num_exception_handlers"]
+    ]])
+    
+    # 5. Concatenación Final (TF-IDF primero, AST después)
+    final_features = hstack([tfidf_features, ast_features_array])
+    
+    # 6. Predicción
+    prediction = rf_model.predict(final_features)[0]
+    probabilities = rf_model.predict_proba(final_features)[0]
+    vuln_prob = probabilities[1] * 100
+    
+    report_file = "reporte_seguridad.txt"
+    
+    # 7. Generar Reporte y Decisión
+    if prediction == 1:
+        # ES VULNERABLE
+        anomalies = []
+        if ast_features_dict["dangerous_func_count"] > 0:
+            anomalies.append(f"- Se detectaron {ast_features_dict['dangerous_func_count']} invocaciones a funciones peligrosas (ej. eval, subprocess, os.system).")
+        if ast_features_dict["has_string_concat"] == 1:
+            anomalies.append("- Concatenación de strings detectada (posible riesgo de inyección).")
+        if ast_features_dict["num_exception_handlers"] > 0:
+            anomalies.append(f"- Bloques try/except vacíos encontrados ({ast_features_dict['num_exception_handlers']}), posible supresión de errores.")
+        if ast_features_dict["ast_depth"] > 15:
+            anomalies.append("- Alta complejidad estructural (ast_depth alto).")
+            
+        anomalies_text = "\n".join(anomalies) if anomalies else "- El modelo TF-IDF identificó patrones anómalos de texto comúnmente asociados con código inseguro."
+        
+        report_content = f"""🚨 **RECHAZO AUTOMÁTICO - GATEKEEPER DE SEGURIDAD** 🚨
+
+El modelo de Inteligencia Artificial (Random Forest) ha analizado los cambios introducidos en este Pull Request y los ha clasificado como **VULNERABLES**.
+
+**Detalles del Análisis Predictivo:**
+- **Probabilidad de vulnerabilidad:** {vuln_prob:.2f}%
+- **Decisión:** Bloqueo Automático (Exit Code 1)
+
+**Anomalías Sintácticas Detectadas (AST):**
+{anomalies_text}
+
+_Por favor, revise las directrices de codificación segura del proyecto, remueva las funciones peligrosas y corrija el código antes de intentar un nuevo merge._
+"""
+        with open(report_file, "w", encoding="utf-8") as f:
+            f.write(report_content)
+            
+        print("🚨 CÓDIGO VULNERABLE DETECTADO. Probabilidad:", f"{vuln_prob:.2f}%")
+        print("Reporte generado. Finalizando con código de error (Exit 1).")
+        sys.exit(1)
+        
+    else:
+        # ES SEGURO
+        report_content = f"✅ GATEKEEPER PASS: El código es estadísticamente seguro.\nProbabilidad de vulnerabilidad: {vuln_prob:.2f}%"
+        with open(report_file, "w", encoding="utf-8") as f:
+            f.write(report_content)
+            
+        print("✅ GATEKEEPER PASS: Código seguro detectado. Probabilidad de riesgo:", f"{vuln_prob:.2f}%")
+        print("Reporte generado. Finalizando con éxito (Exit 0).")
+        sys.exit(0)
+
+if __name__ == "__main__":
+    main()

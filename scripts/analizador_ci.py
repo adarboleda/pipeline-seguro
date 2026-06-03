@@ -36,6 +36,7 @@ class ASTFeatureExtractor(ast.NodeVisitor):
         self.num_imports: int = 0
         self.has_string_concat: int = 0
         self.num_exception_handlers: int = 0
+        self.found_dangerous_details: List[str] = []
 
     def _compute_depth(self, node: ast.AST, current_depth: int = 0) -> int:
         max_depth = current_depth
@@ -49,11 +50,13 @@ class ASTFeatureExtractor(ast.NodeVisitor):
         if isinstance(node.func, ast.Name):
             if node.func.id in self._SIMPLE_DANGEROUS:
                 self.dangerous_func_count += 1
+                self.found_dangerous_details.append(f"{node.func.id}() (línea ~{getattr(node, 'lineno', '?')})")
         elif isinstance(node.func, ast.Attribute):
             if isinstance(node.func.value, ast.Name):
                 pair = (node.func.value.id, node.func.attr)
                 if pair in self._COMPOUND_DANGEROUS:
                     self.dangerous_func_count += 1
+                    self.found_dangerous_details.append(f"{pair[0]}.{pair[1]}() (línea ~{getattr(node, 'lineno', '?')})")
         self.generic_visit(node)
 
     def visit_Import(self, node: ast.Import):
@@ -91,6 +94,7 @@ class ASTFeatureExtractor(ast.NodeVisitor):
             "num_imports": self.num_imports,
             "has_string_concat": self.has_string_concat,
             "num_exception_handlers": self.num_exception_handlers,
+            "found_dangerous_details": self.found_dangerous_details,
         }
 
 # =============================================================================
@@ -189,13 +193,21 @@ def main():
         # ES VULNERABLE
         anomalies = []
         if ast_features_dict["dangerous_func_count"] > 0:
-            anomalies.append(f"- Se detectaron {ast_features_dict['dangerous_func_count']} invocaciones a funciones peligrosas (ej. ev" + "al, sub" + "process, o" + "s.system).")
+            detalles_funcs = ", ".join(ast_features_dict["found_dangerous_details"])
+            anomalies.append(f"- Se detectaron {ast_features_dict['dangerous_func_count']} invocaciones a funciones peligrosas: {detalles_funcs}")
         if ast_features_dict["has_string_concat"] == 1:
             anomalies.append("- Concatenación de strings detectada (posible riesgo de inyección).")
         if ast_features_dict["num_exception_handlers"] > 0:
             anomalies.append(f"- Bloques try/except vacíos encontrados ({ast_features_dict['num_exception_handlers']}), posible supresión de errores.")
         if ast_features_dict["ast_depth"] > 15:
             anomalies.append("- Alta complejidad estructural (ast_depth alto).")
+            
+        # Detección de Falsos Positivos por NLP (Palabras clave)
+        suspicious_keywords = ["sqli", "xss", "inyección", "inyeccion", "drop table", "hacker", "payload", "malicioso", "insecure", "injection"]
+        found_keywords = [kw for kw in suspicious_keywords if kw in code_snippet.lower()]
+        
+        if not anomalies and found_keywords:
+            anomalies.append(f"- El modelo NLP detectó palabras clave frecuentemente usadas en contextos de vulnerabilidades: {', '.join(found_keywords)}.")
             
         anomalies_text = "\n".join(anomalies) if anomalies else "- El modelo TF-IDF identificó patrones anómalos de texto comúnmente asociados con código inseguro."
         

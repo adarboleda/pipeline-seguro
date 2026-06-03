@@ -28,6 +28,12 @@ jobs:
       - name: Checkout del código
         uses: actions/checkout@v4
 
+      - name: Notificar inicio de revisión de seguridad
+        run: |
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
+            -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
+            -d text="⏳ INICIO DE REVISIÓN: Comenzando análisis de seguridad ML para el PR #${{ github.event.pull_request.number }}."
+
       - name: Setup de Python 3.10
         uses: actions/setup-python@v5
         with:
@@ -100,6 +106,9 @@ jobs:
         # Hacemos merge automático ya que pasó el filtro de seguridad (Job 1)
         run: |
           gh pr merge ${{ github.event.pull_request.number }} --auto --merge
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
+            -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
+            -d text="🔄 MERGE REALIZADO: El PR #${{ github.event.pull_request.number }} ha sido fusionado en la rama 'test' exitosamente."
 
       - name: Setup de Python 3.10 para pruebas
         uses: actions/setup-python@v5
@@ -169,3 +178,10 @@ jobs:
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
             -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
             -d text="🎉 DESPLIEGUE EXITOSO: El nuevo código seguro está en producción en Render."
+
+      - name: Notificación de Despliegue Fallido
+        if: failure()
+        run: |
+          curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
+            -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
+            -d text="❌ ERROR DE DESPLIEGUE: Falló la promoción a main o el webhook de Render."

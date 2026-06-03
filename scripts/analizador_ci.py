@@ -143,12 +143,15 @@ def main():
         
     # 2. Cargar Modelos
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    models_dir = os.path.join(base_dir, "models")
+    models_dir = os.path.join(base_dir, "pipeline", "models")
     rf_model_path = os.path.join(models_dir, "rf_vulnerability_detector.joblib")
     tfidf_path = os.path.join(models_dir, "tfidf_vectorizer.joblib")
     
     if not os.path.exists(rf_model_path) or not os.path.exists(tfidf_path):
-        print(f"Error: No se encontraron los modelos .joblib en la carpeta {models_dir}")
+        error_msg = f"Error: No se encontraron los modelos .joblib en la carpeta {models_dir}"
+        print(error_msg)
+        with open("reporte_seguridad.txt", "w", encoding="utf-8") as f:
+            f.write(f"🚨 **ERROR INTERNO DEL PIPELINE** 🚨\n\n{error_msg}")
         sys.exit(1)
         
     rf_model = joblib.load(rf_model_path)

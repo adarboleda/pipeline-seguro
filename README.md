@@ -286,11 +286,9 @@ Las gráficas generadas durante el entrenamiento están disponibles en la carpet
 | [`evaluacion_modelo.png`](./pipeline/evaluacion_modelo.png)     | Matriz de confusión y métricas del modelo              |
 | [`feature_importance.png`](./pipeline/feature_importance.png)   | Importancia de features del Random Forest              |
 
-> 📌 **Imagen requerida aquí:**
-> **`[INSERTAR CAPTURA]`** — Screenshot de `evaluacion_modelo.png` mostrando la matriz de confusión y el reporte de clasificación (precision, recall, f1-score) del modelo final.
+> ![Descripción](./pipeline/evaluacion_modelo.png) — Screenshot de `evaluacion_modelo.png` mostrando la matriz de confusión y el reporte de clasificación (precision, recall, f1-score) del modelo final.
 
-> 📌 **Imagen requerida aquí:**
-> **`[INSERTAR CAPTURA]`** — Screenshot de `feature_importance.png` mostrando cuáles features del AST y TF-IDF son más importantes para el clasificador.
+> ![Descripción](./pipeline/feature_importance.png) — Screenshot de `feature_importance.png` mostrando cuáles features del AST y TF-IDF son más importantes para el clasificador.
 
 ---
 
@@ -309,7 +307,7 @@ Las gráficas generadas durante el entrenamiento están disponibles en la carpet
 ### 1. Clonar el Repositorio
 
 ```bash
-git clone https://github.com/TU_USUARIO/pipeline-seguro.git
+git clone https://github.com/adarboleda/pipeline-seguro
 cd pipeline-seguro
 ```
 

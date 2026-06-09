@@ -47,13 +47,13 @@ class ASTFeatureExtractor(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call):
         self.total_calls += 1
         if isinstance(node.func, ast.Name):
-            if node.func.id in self._SIMPLE_DANGEROUS:
+            if node.func.id in {"eval", "exec", "system", "Popen", "call"}:
                 self.dangerous_func_count += 1
         elif isinstance(node.func, ast.Attribute):
-            if isinstance(node.func.value, ast.Name):
-                pair = (node.func.value.id, node.func.attr)
-                if pair in self._COMPOUND_DANGEROUS:
-                    self.dangerous_func_count += 1
+            if node.func.attr in {"system", "Popen", "call"}:
+                self.dangerous_func_count += 1
+            elif node.func.attr == "format":
+                self.has_string_concat = 1
         self.generic_visit(node)
 
     def visit_Import(self, node: ast.Import):
@@ -65,8 +65,12 @@ class ASTFeatureExtractor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_BinOp(self, node: ast.BinOp):
-        if isinstance(node.op, ast.Add):
+        if isinstance(node.op, (ast.Add, ast.Mod)):
             self.has_string_concat = 1
+        self.generic_visit(node)
+
+    def visit_JoinedStr(self, node: ast.JoinedStr):
+        self.has_string_concat = 1
         self.generic_visit(node)
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler):

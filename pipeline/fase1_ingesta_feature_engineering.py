@@ -605,7 +605,10 @@ def inject_synthetic_data(df: pd.DataFrame, code_col: str) -> pd.DataFrame:
         "def hash_password(password: str) -> str:\n    import bcrypt\n    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')",
         "def sanitize_input(user_input: str) -> str:\n    import re\n    return re.sub(r'[^a-zA-Z0-9 ]', '', user_input)",
         "import html\ndef render_template(user_input):\n    safe_input = html.escape(user_input)\n    return f'<div>{safe_input}</div>'",
-        "import subprocess\ndef ping_host(host):\n    # Safe usage of subprocess with list and no shell\n    return subprocess.run(['ping', '-c', '4', host], capture_output=True)"
+        "import subprocess\ndef ping_host(host):\n    # Safe usage of subprocess with list and no shell\n    return subprocess.run(['ping', '-c', '4', host], capture_output=True)",
+        "def greet_user(username):\n    # F-string seguro\n    return f'Hello, {username}! Welcome back.'",
+        "def get_user_safe(db, user_id):\n    # Parametrizacion\n    return db.execute('SELECT * FROM users WHERE id = :id', {'id': user_id})",
+        "def log_action(user, action):\n    # Uso de format seguro\n    print('User {} performed {}'.format(user, action))"
     ]
 
     synthetic_vuln_snippets = [
@@ -614,7 +617,12 @@ def inject_synthetic_data(df: pd.DataFrame, code_col: str) -> pd.DataFrame:
         "import sqlite3\ndef get_user_vuln(username):\n    # SQL Injection Vulnerability\n    conn = sqlite3.connect('users.db')\n    cursor = conn.cursor()\n    cursor.execute('SELECT * FROM users WHERE username = ' + username)\n    return cursor.fetchall()",
         "def render_page(user_input):\n    # XSS Vulnerability\n    return '<html><body>' + user_input + '</body></html>'",
         "import pickle\ndef load_data(serialized_data):\n    # Insecure Deserialization\n    return pickle.loads(serialized_data)",
-        "def execute_dynamic_code(code_string):\n    # Code Injection\n    eval(code_string)"
+        "def execute_dynamic_code(code_string):\n    # Code Injection\n    eval(code_string)",
+        "def query_db_fstring(db, user_id):\n    # SQLi via f-string\n    return db.execute(f'SELECT * FROM users WHERE id = {user_id}')",
+        "def query_db_format(db, user_id):\n    # SQLi via format\n    return db.execute('SELECT * FROM users WHERE id = {}'.format(user_id))",
+        "def query_db_percent(db, user_id):\n    # SQLi via %\n    return db.execute('SELECT * FROM users WHERE id = %s' % user_id)",
+        "from os import system as sys_call\ndef run_cmd_alias(input_user):\n    sys_call('ping ' + input_user)",
+        "import os as o\ndef run_cmd_mod_alias(input_user):\n    o.system('ping ' + input_user)"
     ]
     
     synthetic_rows = []
@@ -793,46 +801,22 @@ class ASTFeatureExtractor(ast.NodeVisitor):
         return max_depth
 
     def visit_Call(self, node: ast.Call):
-        """
-        Visita un nodo de tipo Call (llamada a función) en el AST.
-
-        Este método se invoca automáticamente por ast.NodeVisitor cada vez
-        que encuentra una llamada a función en el código. Aquí detectamos:
-        - Llamadas simples: eval(...), exec(...)
-        - Llamadas compuestas: subprocess.Popen(...), os.system(...)
-
-        Ejemplo de AST para `eval(user_input)`:
-            Call(func=Name(id='eval'), args=[Name(id='user_input')])
-
-        Ejemplo de AST para `os.system(cmd)`:
-            Call(func=Attribute(value=Name(id='os'), attr='system'), args=[...])
-        """
         self.total_calls += 1
-
-        # ── Detección de llamadas simples: eval(), exec() ──────────────────
-        # En el AST, una llamada simple tiene func como un nodo Name
-        # con el atributo 'id' conteniendo el nombre de la función.
+        
+        # Detecta eval, exec, o funciones importadas directamente (ej: from os import system)
         if isinstance(node.func, ast.Name):
-            if node.func.id in self._SIMPLE_DANGEROUS:
+            if node.func.id in {"eval", "exec", "system", "Popen", "call"}:
                 self.dangerous_func_count += 1
                 logger.debug(f"   🚨 Función peligrosa detectada: {node.func.id}()")
-
-        # ── Detección de llamadas compuestas: module.function() ────────────
-        # En el AST, una llamada con punto (e.g., os.system) tiene func
-        # como un nodo Attribute con:
-        #   - value.id = nombre del módulo (e.g., "os")
-        #   - attr = nombre de la función (e.g., "system")
+                
+        # Detecta llamadas compuestas con alias de módulo (ej: o.system o sub.Popen) y llamadas a format()
         elif isinstance(node.func, ast.Attribute):
-            if isinstance(node.func.value, ast.Name):
-                pair = (node.func.value.id, node.func.attr)
-                if pair in self._COMPOUND_DANGEROUS:
-                    self.dangerous_func_count += 1
-                    logger.debug(
-                        f"   🚨 Función peligrosa detectada: "
-                        f"{pair[0]}.{pair[1]}()"
-                    )
+            if node.func.attr in {"system", "Popen", "call"}:
+                self.dangerous_func_count += 1
+                logger.debug(f"   🚨 Función peligrosa detectada: (alias).{node.func.attr}()")
+            elif node.func.attr == "format":
+                self.has_string_concat = 1
 
-        # Continuar visitando nodos hijos (important para no perder nodos)
         self.generic_visit(node)
 
     def visit_Import(self, node: ast.Import):
@@ -846,18 +830,12 @@ class ASTFeatureExtractor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_BinOp(self, node: ast.BinOp):
-        """
-        Detecta operaciones de concatenación de strings (operador +).
-
-        La concatenación de strings con datos de usuario es un patrón
-        clásico de SQL Injection y XSS:
-            query = "SELECT * FROM users WHERE id=" + user_input
-                                                    ^^^^^^^^^^^
-        En el AST, esto se representa como:
-            BinOp(left=..., op=Add(), right=...)
-        """
-        if isinstance(node.op, ast.Add):
+        if isinstance(node.op, (ast.Add, ast.Mod)):
             self.has_string_concat = 1
+        self.generic_visit(node)
+
+    def visit_JoinedStr(self, node: ast.JoinedStr):
+        self.has_string_concat = 1
         self.generic_visit(node)
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler):

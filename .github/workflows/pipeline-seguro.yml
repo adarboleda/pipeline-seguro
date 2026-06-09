@@ -163,8 +163,11 @@ jobs:
       - name: Crear y fusionar Pull Request hacia 'main'
         # Promocionamos el código probado desde 'test' hacia 'main'
         run: |
-          gh pr create --base main --head test --title "Deploy to Production" --body "Automated merge from test" > pr_url.txt
-          PR_URL=$(cat pr_url.txt)
+          # Intentar crear el PR; si ya existe, ignorar el error
+          gh pr create --base main --head test --title "Deploy to Production" --body "Automated merge from test" || true
+          # Obtener la URL del PR activo entre test y main
+          PR_URL=$(gh pr list --state open --base main --head test --json url --jq '.[0].url')
+          # Fusionar el PR
           gh pr merge $PR_URL --merge --admin
 
       - name: Disparar webhook de despliegue en Render

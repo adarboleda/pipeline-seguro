@@ -1,6 +1,6 @@
 import pytest
 from fastapi.testclient import TestClient
-from main import app
+from app.main import app
 
 # Instanciamos el cliente de pruebas de FastAPI
 client = TestClient(app)
@@ -69,3 +69,20 @@ def test_seguridad_pydantic_rechaza_abuso_de_limites():
     
     assert response.status_code == 422
     assert "Input should be less than or equal to 10" in response.text
+
+def test_seguridad_bloquea_xss():
+    """
+    Prueba de Seguridad (Sanitización y Validación):
+    Valida que los esquemas de validación o sanitización bloqueen inyecciones XSS.
+    En este caso, la regex restrictiva de Pydantic bloquea los caracteres `<` y `>`
+    antes siquiera de llegar a la lógica de negocio o a bleach.
+    Se espera un HTTP 422 Unprocessable Entity.
+    """
+    payload = {
+        "nombre": "Concierto <script>alert('XSS')</script> VIP",
+        "asientos_disponibles": 100
+    }
+    response = client.post("/eventos/", json=payload)
+    
+    assert response.status_code == 422
+    assert "String should match pattern" in response.text

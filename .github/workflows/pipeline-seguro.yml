@@ -32,7 +32,7 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
             -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
-            -d text="⏳ INICIO DE REVISIÓN: Comenzando análisis de seguridad ML para el PR #${{ github.event.pull_request.number }}."
+            -d text="⏳ INICIO DE REVISIÓN: Comenzando análisis estático de seguridad para el PR #${{ github.event.pull_request.number }}."
 
       - name: Setup de Python 3.10
         uses: actions/setup-python@v5
@@ -69,7 +69,7 @@ jobs:
           gh pr close ${{ github.event.pull_request.number }}
 
           # 3. Crear un Issue para revisión obligatoria del equipo
-          gh issue create --title "Vulnerabilidad detectada en PR #${{ github.event.pull_request.number }}" --body "Se detectó código inseguro en el PR. Revisión requerida."
+          gh issue create --title "Vulnerabilidad detectada en PR #${{ github.event.pull_request.number }}" --body-file reporte_seguridad.txt
 
           # 4. Enviar notificación urgente a Telegram vía cURL (sin actions de terceros)
           MSG="🚨 ALERTA CRÍTICA: Se ha bloqueado el PR #${{ github.event.pull_request.number }} por inyección de código vulnerable."
@@ -86,7 +86,7 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
             -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
-            -d text="✅GATEKEEPER PASS: El código del PR #${{ github.event.pull_request.number }} pasó las pruebas de seguridad ML."
+            -d text="✅ REVISIÓN DE SEGURIDAD APROBADA: El código del PR #${{ github.event.pull_request.number }} es seguro."
 
   # ==============================================================================
   # JOB 2: MERGE AUTOMÁTICO Y PRUEBAS FUNCIONALES
@@ -180,7 +180,7 @@ jobs:
         run: |
           curl -s -X POST https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage \
             -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
-            -d text="🎉 DESPLIEGUE EXITOSO: El nuevo código seguro está en producción en Render."
+            -d text="🎉 DESPLIEGUE EXITOSO: El nuevo código seguro está en producción. Puedes verlo aquí: https://pipeline-seguro.onrender.com"
 
       - name: Notificación de Despliegue Fallido
         if: failure()

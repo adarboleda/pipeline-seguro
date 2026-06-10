@@ -18,7 +18,7 @@ jobs:
   # JOB 1: GATEKEEPER DE SEGURIDAD (Analizador con Modelo Random Forest)
   # ==============================================================================
   gatekeeper-security-check:
-    name: Análisis de Seguridad Estático
+    name: Análisis de Seguridad ML
     runs-on: ubuntu-latest
     env:
       # Token necesario para autenticar la CLI de GitHub

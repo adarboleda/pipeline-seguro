@@ -36,6 +36,7 @@ class ASTFeatureExtractor(ast.NodeVisitor):
         self.num_imports: int = 0
         self.has_string_concat: int = 0
         self.num_exception_handlers: int = 0
+        self.found_dangerous_details: List[str] = []
 
     def _compute_depth(self, node: ast.AST, current_depth: int = 0) -> int:
         max_depth = current_depth
@@ -49,6 +50,7 @@ class ASTFeatureExtractor(ast.NodeVisitor):
         if isinstance(node.func, ast.Name):
             if node.func.id in {"eval", "exec", "system", "Popen", "call"}:
                 self.dangerous_func_count += 1
+                self.found_dangerous_details.append(f"{node.func.id}() (línea ~{getattr(node, 'lineno', '?')})")
         elif isinstance(node.func, ast.Attribute):
             if node.func.attr in {"system", "Popen", "call"}:
                 self.dangerous_func_count += 1
@@ -95,6 +97,7 @@ class ASTFeatureExtractor(ast.NodeVisitor):
             "num_imports": self.num_imports,
             "has_string_concat": self.has_string_concat,
             "num_exception_handlers": self.num_exception_handlers,
+            "found_dangerous_details": self.found_dangerous_details,
         }
 
 # =============================================================================
@@ -212,7 +215,8 @@ def main():
         # ES VULNERABLE
         anomalies = []
         if ast_features_dict["dangerous_func_count"] > 0:
-            anomalies.append(f"- Se detectaron {ast_features_dict['dangerous_func_count']} invocaciones a funciones peligrosas (ej. ev" + "al, sub" + "process, o" + "s.system).")
+            detalles_funcs = ", ".join(ast_features_dict["found_dangerous_details"])
+            anomalies.append(f"- Se detectaron {ast_features_dict['dangerous_func_count']} invocaciones a funciones peligrosas: {detalles_funcs}")
         if ast_features_dict["has_string_concat"] == 1:
             anomalies.append("- Concatenación de strings detectada (posible riesgo de inyección).")
         # Detección de Falsos Positivos por NLP (Palabras clave)

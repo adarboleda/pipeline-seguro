@@ -33,4 +33,4 @@ ENV PORT=8000
 # 9. Comando de ejecución
 # Usamos el modo shell (CMD command) para que Docker evalúe e inyecte correctamente la variable $PORT 
 # en los argumentos de uvicorn al momento de iniciar el contenedor.
-CMD uvicorn main:app --host 0.0.0.0 --port $PORT
+CMD uvicorn app.main:app --host 0.0.0.0 --port $PORT

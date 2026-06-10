@@ -48,15 +48,14 @@ class ASTFeatureExtractor(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call):
         self.total_calls += 1
         if isinstance(node.func, ast.Name):
-            if node.func.id in self._SIMPLE_DANGEROUS:
+            if node.func.id in {"eval", "exec", "system", "Popen", "call"}:
                 self.dangerous_func_count += 1
                 self.found_dangerous_details.append(f"{node.func.id}() (línea ~{getattr(node, 'lineno', '?')})")
         elif isinstance(node.func, ast.Attribute):
-            if isinstance(node.func.value, ast.Name):
-                pair = (node.func.value.id, node.func.attr)
-                if pair in self._COMPOUND_DANGEROUS:
-                    self.dangerous_func_count += 1
-                    self.found_dangerous_details.append(f"{pair[0]}.{pair[1]}() (línea ~{getattr(node, 'lineno', '?')})")
+            if node.func.attr in {"system", "Popen", "call"}:
+                self.dangerous_func_count += 1
+            elif node.func.attr == "format":
+                self.has_string_concat = 1
         self.generic_visit(node)
 
     def visit_Import(self, node: ast.Import):
@@ -68,8 +67,12 @@ class ASTFeatureExtractor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_BinOp(self, node: ast.BinOp):
-        if isinstance(node.op, ast.Add):
+        if isinstance(node.op, (ast.Add, ast.Mod)):
             self.has_string_concat = 1
+        self.generic_visit(node)
+
+    def visit_JoinedStr(self, node: ast.JoinedStr):
+        self.has_string_concat = 1
         self.generic_visit(node)
 
     def visit_ExceptHandler(self, node: ast.ExceptHandler):
@@ -102,19 +105,35 @@ class ASTFeatureExtractor(ast.NodeVisitor):
 # =============================================================================
 
 def parse_diff(diff_path: str):
-    """Extrae únicamente las líneas añadidas del archivo .diff y detecta los archivos."""
+    """Extrae únicamente las líneas añadidas del archivo .diff y detecta los archivos con sus líneas."""
     added_lines = []
     modified_files = set()
+    current_file = "Desconocido"
+    current_line = 0
+    file_lines_added = {}
+    
     with open(diff_path, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
             if line.startswith("+++ b/"):
-                modified_files.add(line[6:].strip())
+                current_file = line[6:].strip()
+                modified_files.add(current_file)
+            elif line.startswith("@@"):
+                parts = line.split(" ")
+                if len(parts) >= 3 and parts[2].startswith("+"):
+                    c_d = parts[2][1:].split(",")
+                    current_line = int(c_d[0])
             elif line.startswith("+++"):
                 continue
             elif line.startswith("+"):
-                # Remover el '+' inicial
-                added_lines.append(line[1:])
-    return "".join(added_lines), list(modified_files)
+                code_line = line[1:]
+                added_lines.append(code_line)
+                if current_file not in file_lines_added:
+                    file_lines_added[current_file] = []
+                file_lines_added[current_file].append((current_line, code_line))
+                current_line += 1
+            elif line.startswith(" "):
+                current_line += 1
+    return "".join(added_lines), list(modified_files), file_lines_added
 
 def robust_ast_extract(code_snippet: str, extractor: ASTFeatureExtractor) -> Dict[str, int]:
     """Extrae features AST, envolviendo el código en un wrapper si hay error sintáctico."""
@@ -143,7 +162,7 @@ def main():
         sys.exit(1)
         
     # 1. Parsear diff
-    code_snippet, modified_files = parse_diff(diff_path)
+    code_snippet, modified_files, file_lines_added = parse_diff(diff_path)
     if not code_snippet.strip():
         print("No se encontraron adiciones de código en el PR. Omitiendo análisis.")
         sys.exit(0)
@@ -211,44 +230,49 @@ def main():
         found_keywords = [kw for kw in suspicious_keywords if kw in code_snippet.lower()]
         
         if not anomalies and found_keywords:
-            anomalies.append(f"- El modelo NLP detectó palabras clave frecuentemente usadas en contextos de vulnerabilidades: {', '.join(found_keywords)}.")
+            anomalies.append(f"- El modelo de Análisis Semántico detectó palabras clave sospechosas: {', '.join(found_keywords)}.")
             
-        # Detección de Falsos Positivos por NLP (Palabras clave)
-        suspicious_keywords = ["sqli", "xss", "inyección", "inyeccion", "drop table", "hacker", "payload", "malicioso", "insecure", "injection"]
-        found_keywords = [kw for kw in suspicious_keywords if kw in code_snippet.lower()]
+        anomalies_text = "\n".join(anomalies) if anomalies else "- El modelo identificó patrones comúnmente asociados con código inseguro (Posible Inyección SQL o de Comandos)."
         
-        if not anomalies and found_keywords:
-            anomalies.append(f"- El modelo NLP detectó palabras clave frecuentemente usadas en contextos de vulnerabilidades: {', '.join(found_keywords)}.")
-            
-        # Detección de Falsos Positivos por NLP (Palabras clave)
-        suspicious_keywords = ["sqli", "xss", "inyección", "inyeccion", "drop table", "hacker", "payload", "malicioso", "insecure", "injection"]
-        found_keywords = [kw for kw in suspicious_keywords if kw in code_snippet.lower()]
+        # Buscar líneas culpables
+        culprit_lines = []
+        suspicious_heuristics = suspicious_keywords + ["eval", "exec", "subprocess", "os.system", "system", "Popen", "call"]
+        for f_name, lines in file_lines_added.items():
+            for l_num, l_text in lines:
+                l_lower = l_text.lower()
+                if any(sh.lower() in l_lower for sh in suspicious_heuristics):
+                    culprit_lines.append(f"  - {f_name} (Línea {l_num}): {l_text.strip()[:60]}...")
+                elif ast_features_dict["has_string_concat"] == 1 and ("%" in l_text or "+" in l_text or ".format" in l_text or "f\"" in l_text or "f'" in l_text):
+                    if "select" in l_lower or "insert" in l_lower or "update" in l_lower or "delete" in l_lower:
+                        culprit_lines.append(f"  - {f_name} (Línea {l_num}) [Posible SQLi]: {l_text.strip()[:60]}...")
         
-        if not anomalies and found_keywords:
-            anomalies.append(f"- El modelo NLP detectó palabras clave frecuentemente usadas en contextos de vulnerabilidades: {', '.join(found_keywords)}.")
-            
-        anomalies_text = "\n".join(anomalies) if anomalies else "- El modelo TF-IDF identificó patrones anómalos de texto comúnmente asociados con código inseguro."
+        lineas_texto = ""
+        if culprit_lines:
+            lineas_texto = "\n**Líneas Sospechosas Identificadas:**\n" + "\n".join(culprit_lines[:10])
+            if len(culprit_lines) > 10:
+                lineas_texto += "\n  - ... (y más líneas)"
         
         archivos_afectados = ", ".join(modified_files) if modified_files else "Desconocido"
         
-        report_content = f"""🚨 **RECHAZO AUTOMÁTICO - GATEKEEPER DE SEGURIDAD** 🚨
+        report_content = f"""🚨 **RECHAZO AUTOMÁTICO - REVISIÓN DE SEGURIDAD FALLIDA** 🚨
 
-El modelo de Inteligencia Artificial ha analizado los cambios y los clasificó como **VULNERABLES**.
+El análisis estático de seguridad ha detectado código potencialmente **VULNERABLE** en tu Pull Request.
 
 **Detalles del Análisis:**
 - **Archivos afectados:** {archivos_afectados}
 - **Probabilidad de vulnerabilidad:** {vuln_prob:.2f}%
-- **Decisión:** Bloqueo Automático (Exit Code 1)
+- **Decisión:** Bloqueo Automático (Revisión requerida)
 
-**Anomalías Detectadas:**
+**Tipos de Vulnerabilidad Detectadas:**
 {anomalies_text}
+{lineas_texto}
 
-_Por favor, remueva las funciones o palabras sospechosas y corrija el código._
+_Por favor, revisa las líneas indicadas y corrige el código para evitar inyecciones SQL o de Comandos._
 """
         with open(report_file, "w", encoding="utf-8") as f:
             f.write(report_content)
             
-        telegram_msg = f"🚨 ALERTA CRÍTICA 🚨\nSe detectó código vulnerable ({vuln_prob:.2f}% prob).\nArchivos: {archivos_afectados}\nDetalles:\n{anomalies_text}"
+        telegram_msg = f"🚨 ALERTA CRÍTICA: Código Vulnerable Detectado 🚨\n\nEl análisis de seguridad bloqueó el PR porque se detectó código vulnerable ({vuln_prob:.2f}% prob).\n\n📁 Archivos afectados: {archivos_afectados}\n\n🛑 Detalles:\n{anomalies_text}"
         with open("telegram_msg.txt", "w", encoding="utf-8") as f:
             f.write(telegram_msg)
             
@@ -258,11 +282,11 @@ _Por favor, remueva las funciones o palabras sospechosas y corrija el código._
         
     else:
         # ES SEGURO
-        report_content = f"✅ GATEKEEPER PASS: El código es estadísticamente seguro.\nProbabilidad de vulnerabilidad: {vuln_prob:.2f}%"
+        report_content = f"✅ REVISIÓN DE SEGURIDAD APROBADA: El código es estadísticamente seguro.\nProbabilidad de vulnerabilidad: {vuln_prob:.2f}%"
         with open(report_file, "w", encoding="utf-8") as f:
             f.write(report_content)
             
-        print("✅ GATEKEEPER PASS: Código seguro detectado. Probabilidad de riesgo:", f"{vuln_prob:.2f}%")
+        print("✅ REVISIÓN DE SEGURIDAD APROBADA: Código seguro detectado. Probabilidad de riesgo:", f"{vuln_prob:.2f}%")
         print("Reporte generado. Finalizando con éxito (Exit 0).")
         sys.exit(0)
 

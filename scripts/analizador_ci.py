@@ -211,7 +211,13 @@ def main():
     report_file = "reporte_seguridad.txt"
     
     # 7. Generar Reporte y Decisión
-    if prediction == 1:
+    
+    # Evaluar heurísticas críticas
+    is_vulnerable = False
+    if prediction == 1 or vuln_prob >= 40.0 or ast_features_dict["dangerous_func_count"] > 0:
+        is_vulnerable = True
+
+    if is_vulnerable:
         # ES VULNERABLE
         anomalies = []
         if ast_features_dict["dangerous_func_count"] > 0:
@@ -220,8 +226,6 @@ def main():
         if ast_features_dict["has_string_concat"] == 1:
             anomalies.append("- Concatenación de strings detectada (posible riesgo de inyección).")
         # Detección de Falsos Positivos por NLP (Palabras clave)
-        # Ofuscamos las palabras aquí dividiéndolas para que este mismo script no sea detectado
-        # como "código vulnerable" por el modelo TF-IDF (auto-flagging).
         suspicious_keywords = [
             "sq" + "li", "xs" + "s", "inyecc" + "ión", "inyecc" + "ion", 
             "drop" + " table", "hac" + "ker", "pay" + "load", "mali" + "cioso", 

@@ -6,8 +6,8 @@ import hashlib
 import sqlite3
 import requests
 
-def vulnerable_subprocess_call(cmd_argument: str):
-    """
-    Command Injection usando subprocess.call con shell=True.
-    """
-    subprocess.call("ls -la " + cmd_argument, shell=True)
+def sqli_format_concatenation(db_conn, input_usuario: str):
+    cursor = db_conn.cursor()
+    query = "SELECT * FROM usuarios WHERE email = '{}'".format(input_usuario)
+    cursor.execute(query)
+    return cursor.fetchall()

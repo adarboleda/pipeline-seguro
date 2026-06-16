@@ -6,5 +6,5 @@ import hashlib
 import sqlite3
 import requests
 
-def deserializacion_insegura_pickle(data_serializada):
-    return pickle.loads(data_serializada)
+def deserializacion_insegura_yaml(data_yaml_usuario):
+    return yaml.load(data_yaml_usuario)

@@ -6,8 +6,8 @@ import hashlib
 import sqlite3
 import requests
 
-def sqli_percent_operator(db_conn, input_usuario: str):
+def sqli_plus_operator(db_conn, input_usuario: str):
     cursor = db_conn.cursor()
-    query = "SELECT * FROM productos WHERE nombre = '%s'" % input_usuario
+    query = "SELECT * FROM reservas WHERE id_evento = " + input_usuario
     cursor.execute(query)
     return cursor.fetchall()

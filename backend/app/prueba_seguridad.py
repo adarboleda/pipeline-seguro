@@ -6,13 +6,8 @@ import hashlib
 import sqlite3
 import requests
 
-# ==============================================================================
-# CATEGORÍA 1: Ejecución Remota de Código (RCE) / Inyección de Comandos
-# ==============================================================================
-
-def vulnerable_eval_rce(payload_usuario: str):
+def vulnerable_exec_rce(script_usuario: str):
     """
-    RCE por ejecución dinámica de código.
+    RCE por ejecución dinámica de sentencias.
     """
-    eval(payload_usuario)
-
+    exec(script_usuario)

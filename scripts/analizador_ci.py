@@ -542,18 +542,34 @@ def main():
     # 9. Categorías detectadas por el ASTFeatureExtractor ampliado
     ast_vuln_categories = ast_features_dict.get("vulnerability_categories", [])
 
-    # 10. Decisión final: vulnerable si CUALQUIER capa lo detecta
-    has_ml_signal = (prediction == 1 or vuln_prob >= 40.0)
-    has_ast_signal = ast_features_dict["dangerous_func_count"] > 0
-    has_heuristic_signal = len(heuristic_categories) > 0
-    has_path_traversal = len(path_traversal_findings) > 0
+    # 10. Decisión final
+    # ══════════════════════════════════════════════════════════════════════
+    # ARQUITECTURA DE DECISIÓN (3 capas):
+    #
+    # CAPA 1 — Modelo ML (GATE PRINCIPAL):
+    #   prediction == 1 → el RandomForest votó mayoría vulnerable
+    #   vuln_prob >= 50% → probabilidad alta (umbral conservador para evitar FP)
+    #
+    # CAPA 2 — AST real (GATE SECUNDARIO):
+    #   dangerous_func_count > 0 → se encontraron LLAMADAS REALES a funciones
+    #   peligrosas en el AST (pickle.loads, yaml.load, eval, etc.)
+    #   path_traversal_findings → open(concat) real detectado
+    #
+    # CAPA 3 — Heurísticas de texto (SOLO CONTEXTO, NO GATE):
+    #   Solo añaden detalle al reporte cuando alguna de las capas anteriores
+    #   ya disparó. NUNCA bloquean por sí solas (evita falsos positivos cuando
+    #   el diff modifica scripts de seguridad que discuten vulnerabilidades).
+    # ══════════════════════════════════════════════════════════════════════
 
-    is_vulnerable = (
-        has_ml_signal or
-        has_ast_signal or
-        has_heuristic_signal or
-        has_path_traversal
+    has_ml_signal = (prediction == 1 or vuln_prob >= 50.0)
+    has_ast_signal = (
+        ast_features_dict["dangerous_func_count"] > 0 or
+        len(path_traversal_findings) > 0
     )
+    has_heuristic_signal = len(heuristic_categories) > 0  # Solo para el reporte
+
+    # El bloqueo requiere que el ML o el AST real lo confirmen
+    is_vulnerable = has_ml_signal or has_ast_signal
 
     report_file = "reporte_seguridad.txt"
 

@@ -65,13 +65,17 @@ jobs:
           # 1. Comentar en el PR informando el rechazo con probabilidad (leyendo el reporte generado por Python)
           gh pr comment ${{ github.event.pull_request.number }} --body-file reporte_seguridad.txt
 
-          # 2. Cerrar el Pull Request de forma inmediata
+          # 2. Aplicar etiqueta 'fixing-required' al PR (requerido por rúbrica)
+          gh label create "fixing-required" --color "e11d48" --description "Código vulnerable detectado — revisión obligatoria" || true
+          gh pr edit ${{ github.event.pull_request.number }} --add-label "fixing-required"
+
+          # 3. Cerrar el Pull Request de forma inmediata
           gh pr close ${{ github.event.pull_request.number }}
 
-          # 3. Crear un Issue para revisión obligatoria del equipo
+          # 4. Crear un Issue para revisión obligatoria del equipo
           gh issue create --title "Vulnerabilidad detectada en PR #${{ github.event.pull_request.number }}" --body-file reporte_seguridad.txt
 
-          # 4. Enviar notificación urgente a Telegram vía cURL (sin actions de terceros)
+          # 5. Enviar notificación urgente a Telegram vía cURL (sin actions de terceros)
           MSG="🚨 ALERTA CRÍTICA: Se ha bloqueado el PR #${{ github.event.pull_request.number }} por inyección de código vulnerable."
           if [ -f telegram_msg.txt ]; then
             MSG=$(cat telegram_msg.txt)

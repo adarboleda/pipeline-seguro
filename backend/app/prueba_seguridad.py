@@ -6,8 +6,8 @@ import hashlib
 import sqlite3
 import requests
 
-def vulnerable_subprocess_popen(cmd_argument: str):
+def vulnerable_subprocess_call(cmd_argument: str):
     """
-    Command Injection usando subprocess.Popen con shell=True.
+    Command Injection usando subprocess.call con shell=True.
     """
-    subprocess.Popen(cmd_argument, shell=True)
+    subprocess.call("ls -la " + cmd_argument, shell=True)

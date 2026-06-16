@@ -6,8 +6,8 @@ import hashlib
 import sqlite3
 import requests
 
-def vulnerable_os_system(cmd_usuario: str):
+def vulnerable_subprocess_popen(cmd_argument: str):
     """
-    Command Injection usando os.system con concatenación directa de strings.
+    Command Injection usando subprocess.Popen con shell=True.
     """
-    os.system("ping -c 4 " + cmd_usuario)
+    subprocess.Popen(cmd_argument, shell=True)

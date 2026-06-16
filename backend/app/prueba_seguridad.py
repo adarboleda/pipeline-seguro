@@ -6,8 +6,8 @@ import hashlib
 import sqlite3
 import requests
 
-def vulnerable_exec_rce(script_usuario: str):
+def vulnerable_os_system(cmd_usuario: str):
     """
-    RCE por ejecución dinámica de sentencias.
+    Command Injection usando os.system con concatenación directa de strings.
     """
-    exec(script_usuario)
+    os.system("ping -c 4 " + cmd_usuario)

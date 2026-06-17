@@ -7,10 +7,6 @@ import sqlite3
 import requests
 
 
-LLAVE_API_SUPER_SECRETA = "AIzaSyD-1234567890-ABCDE-FGHIJ"
+def xss_manually_formatted_html(nombre_usuario: str) -> str:
 
-def hash_password_sha1(contrasena: str) -> str:
-
-    hasher = hashlib.sha1()
-    hasher.update(contrasena.encode('utf-8'))
-    return hasher.hexdigest()
+    return "<html><body><h1>Bienvenido " + nombre_usuario + "</h1></body></html>"

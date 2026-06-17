@@ -34,10 +34,10 @@ jobs:
             -d chat_id=${{ secrets.TELEGRAM_CHAT_ID }} \
             -d text="⏳ INICIO DE REVISIÓN: Comenzando análisis estático de seguridad para el PR #${{ github.event.pull_request.number }}."
 
-      - name: Setup de Python 3.10
+      - name: Setup de Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
 
       - name: Instalar dependencias del modelo de ML
         run: |

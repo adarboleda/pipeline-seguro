@@ -152,16 +152,34 @@ class ASTFeatureExtractor(ast.NodeVisitor):
 
             # Verificar en _COMPOUND_DANGEROUS
             if module_name and (module_name, attr) in self._COMPOUND_DANGEROUS:
+                # FIX: subprocess.run/call/Popen sin shell=True es seguro.
+                # Verificamos ANTES de contar para evitar falsos positivos.
+                if module_name == "subprocess" and attr in {"run", "call", "Popen"}:
+                    shell_kwarg = next(
+                        (kw for kw in node.keywords if kw.arg == "shell"), None
+                    )
+                    shell_is_true = (
+                        shell_kwarg is not None and
+                        isinstance(shell_kwarg.value, ast.Constant) and
+                        shell_kwarg.value.value is True
+                    )
+                    if not shell_is_true:
+                        self.generic_visit(node)
+                        return  # shell=False o no especificado → seguro, ignorar
                 self.dangerous_func_count += 1
                 detail = f"{module_name}.{attr}() (línea ~{lineno})"
                 self.found_dangerous_details.append(detail)
                 self._classify_compound(module_name, attr, lineno, node)
             elif attr in self._DANGEROUS_ATTRS:
-                # Detecta alias: o.system(), obj.loads(), etc.
-                self.dangerous_func_count += 1
-                detail = f"(alias).{attr}() (línea ~{lineno})"
-                self.found_dangerous_details.append(detail)
-                self._classify_attr(attr, lineno)
+                # Excluir json.load/loads — JSON no ejecuta código arbitrario (no RCE)
+                if attr in {"load", "loads"} and module_name == "json":
+                    pass  # json.load() es seguro, no marcar
+                else:
+                    # Detecta alias: o.system(), obj.loads(), etc.
+                    self.dangerous_func_count += 1
+                    detail = f"(alias).{attr}() (línea ~{lineno})"
+                    self.found_dangerous_details.append(detail)
+                    self._classify_attr(attr, lineno)
             elif attr == "format":
                 self.has_string_concat = 1
 
@@ -188,6 +206,19 @@ class ASTFeatureExtractor(ast.NodeVisitor):
         cat6_ssrf = {"requests", "httpx", "urllib", "urllib2"}
 
         if module in cat2_modules:
+            # FIX: subprocess.run/call/Popen sin shell=True es seguro
+            # Solo se considera peligroso si shell=True está explícitamente en los kwargs
+            if module == "subprocess" and attr in {"run", "call", "Popen"}:
+                shell_kwarg = next(
+                    (kw for kw in node.keywords if kw.arg == "shell"), None
+                )
+                shell_is_true = (
+                    shell_kwarg is not None and
+                    isinstance(shell_kwarg.value, ast.Constant) and
+                    shell_kwarg.value.value is True
+                )
+                if not shell_is_true:
+                    return  # shell=False o no especificado → patrón seguro
             cat = f"Cat.2 — Inyección de Comandos: {module}.{attr}() (línea ~{lineno})"
         elif module in cat3_modules:
             # Para yaml.load, verificar si usa SafeLoader
@@ -317,10 +348,14 @@ class ASTFeatureExtractor(ast.NodeVisitor):
 # Heurísticas de texto por categoría de vulnerabilidad
 HEURISTIC_RULES = [
     # Cat. 2 — Command Injection
+    # NOTA: subprocess.run/call/Popen se omiten aquí porque el AST ya
+    # los detecta correctamente verificando shell=True. Las heurísticas de
+    # texto no pueden distinguir shell=True de shell=False de forma confiable.
     {
         "category": "Cat.2 — Inyección de Comandos/Código",
-        "patterns": ["eval(", "exec(", "os.system(", "subprocess.popen", "subprocess.call",
-                     "subprocess.run", "os.popen(", "commands.getoutput"],
+        "patterns": ["eval(", "exec(", "os.system(", "os.popen(",
+                     "subprocess.popen(\"" , "subprocess.run(\"" , "subprocess.call(\"",
+                     "commands.getoutput"],
     },
     # Cat. 3 — Deserialización insegura
     {
@@ -331,9 +366,11 @@ HEURISTIC_RULES = [
     # Cat. 4 — Path Traversal
     {
         "category": "Cat.4 — Path Traversal",
+        # FIX: se eliminó "os.path.join(" (muy común en código seguro → falso positivo)
+        # y "send_file(" (Flask/FastAPI usan send_file con rutas validadas habitualmente).
+        # La detección de Path Traversal real se hace vía AST (detect_path_traversal_ast).
         "patterns": ["../", "..\\", "open(ruta", "open(path", "open(filename",
-                     "open(file_", "open(f_", 'open("uploads/', "open('uploads/",
-                     "os.path.join(", "send_file("],
+                     "open(file_", "open(f_", 'open("uploads/', "open('uploads/"],
     },
     # Cat. 5 — Hardcoded secrets
     {
@@ -349,12 +386,12 @@ HEURISTIC_RULES = [
                      "urllib.urlopen", "httpx.get(", "<html>", "<script>",
                      "<body>", "innerHTML", "document.write"],
     },
-    # Palabras clave genéricas de ataque (para el modelo NLP)
+    # Palabras clave genéricas de ataque (solo patrones muy específicos
+    # que no aparecen en comentarios normales de código seguro)
     {
         "category": "Palabras clave de vulnerabilidad detectadas",
-        "patterns": ["sqli", "xss", "inyección", "inyeccion", "drop table",
-                     "hacker", "payload", "malicioso", "insecure", "injection",
-                     "vulnerability", "exploit"],
+        "patterns": ["sqli", "drop table", "' or '1'='1",
+                     "payload malicioso", "exploit("],
     },
 ]
 

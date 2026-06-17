@@ -43,14 +43,15 @@ El sistema aplica el principio **Shift-Left Security**: la revisión de segurida
 
 ### ✨ Características Principales
 
-| Característica         | Detalle                                    |
-| ---------------------- | ------------------------------------------ |
-| **Análisis de Código** | Random Forest + TF-IDF + AST Features      |
-| **Dataset**            | CVEFixes (código vulnerable/seguro real)   |
-| **Accuracy**           | 96.43% en validación cruzada de 10 pliegues |
-| **Backend**            | FastAPI dockerizado en Render              |
-| **Notificaciones**     | Bot de Telegram en tiempo real             |
-| **Trigger**            | Pull Request automático `dev → test`       |
+| Característica         | Detalle                                                      |
+| ---------------------- | ------------------------------------------------------------ |
+| **Análisis de Código** | Random Forest + TF-IDF + 7 Features AST                     |
+| **Dataset**            | CVEFixes (código vulnerable/seguro real)                     |
+| **Accuracy**           | 96.43% en validación cruzada de 10 pliegues                  |
+| **Backend**            | FastAPI dockerizado en Render                                |
+| **Notificaciones**     | Bot de Telegram en tiempo real                               |
+| **Trigger**            | Pull Request automático `dev → test`                         |
+| **Scope del análisis** | Solo archivos `.py` — documentación y configs son ignoradas  |
 
 ---
 
@@ -119,8 +120,8 @@ gatekeeper-security-check:
   steps:
     - Checkout del código
     - Notificar inicio de revisión vía Telegram
-    - Setup Python 3.10
-    - Instalar dependencias del modelo (scikit-learn, joblib)
+    - Setup Python 3.11
+    - Instalar dependencias del modelo (scikit-learn==1.8.0, joblib)
     - Extraer diff del Pull Request (gh pr diff)
     - Ejecutar scripts/analizador_ci.py con el diff
     - Si VULNERABLE → Comentar PR + Cerrar PR + Issue + Telegram 🚨
@@ -130,23 +131,24 @@ gatekeeper-security-check:
 **Decisión del Gatekeeper:**
 
 ```
-         ┌─────────────────────────────────────────┐
-         │   analizador_ci.py recibe el .diff      │
-         │                                         │
-         │  1. Parsear líneas añadidas             │
-         │  2. Vectorizar con TF-IDF               │
-         │  3. Extraer features AST                │
-         │  4. Predecir con Random Forest          │
-         │                                         │
-         │  prediction == 1 (VULNERABLE)?          │
-         │       ├── exit(1) → Pipeline BLOQUEADO  │
-         │       │   + reporte_seguridad.txt        │
-         │       │   + Issue en GitHub             │
-         │       │   + Notificación Telegram       │
-         │       │                                 │
-         │  prediction == 0 (SEGURO)?              │
-         │       └── exit(0) → Pipeline CONTINÚA  │
-         └─────────────────────────────────────────┘
+         ┌──────────────────────────────────────────────────┐
+         │   analizador_ci.py recibe el .diff               │
+         │                                                  │
+         │  1. Parsear líneas añadidas (solo archivos .py)  │
+         │  2. Vectorizar con TF-IDF                        │
+         │  3. Extraer 7 features AST                       │
+         │  4. Predecir con Random Forest                   │
+         │                                                  │
+         │  ¿ML vota vulnerable O AST detecta patrón        │
+         │   crítico real?                                   │
+         │       ├── exit(1) → Pipeline BLOQUEADO           │
+         │       │   + reporte_seguridad.txt                │
+         │       │   + Issue en GitHub                      │
+         │       │   + Notificación Telegram                │
+         │       │                                          │
+         │  prediction == 0 (SEGURO)?                       │
+         │       └── exit(0) → Pipeline CONTINÚA           │
+         └──────────────────────────────────────────────────┘
 ```
 
 ### ⚙️ JOB 2 — Merge Automático y Pruebas Funcionales
@@ -155,7 +157,7 @@ gatekeeper-security-check:
 auto-merge-and-test:
   needs: gatekeeper-security-check
   steps:
-    - Merge automático PR a rama 'test' (gh pr merge --auto)
+    - Merge automático PR a rama 'test' (gh pr merge --admin)
     - Notificar merge exitoso a Telegram
     - Setup Python 3.10
     - Instalar dependencias (backend/requirements.txt)
@@ -172,7 +174,7 @@ deploy-production:
   steps:
     - Checkout rama 'test'
     - Crear PR automático test → main
-    - Merge automático a main
+    - Merge automático a main (gh pr merge --admin)
     - Disparar Webhook HTTPS de Render
     - Notificar despliegue exitoso/fallido a Telegram
 ```
@@ -195,20 +197,21 @@ deploy-production:
 | ------------------ | ------------------------------------------------------------------------------------ |
 | **Vectorizador**   | `TF-IDF` (Term Frequency–Inverse Document Frequency) para tokenizar el código fuente |
 | **Clasificador**   | `RandomForestClassifier` con `random_state=42`                                       |
-| **Feature Matrix** | TF-IDF sparse matrix + 6 features AST numéricas                                      |
+| **Feature Matrix** | TF-IDF sparse matrix + **7 features AST numéricas**                                  |
 
 ### Features de AST Extraídas
 
-El `ASTFeatureExtractor` recorre el Árbol de Sintaxis Abstracta de cada fragmento y extrae:
+El `ASTFeatureExtractor` recorre el Árbol de Sintaxis Abstracta de cada fragmento y extrae **7 features numéricas**:
 
-| Feature                  | Descripción                                                               |
-| ------------------------ | ------------------------------------------------------------------------- |
-| `ast_depth`              | Profundidad máxima del AST (complejidad estructural)                      |
-| `dangerous_func_count`   | Invocaciones a `eval`, `exec`, `subprocess.Popen`, `os.system`            |
-| `total_calls`            | Total de llamadas a funciones en el fragmento                             |
-| `num_imports`            | Número de sentencias `import`                                             |
-| `has_string_concat`      | Flag binario: ¿hay concatenación de strings? (riesgo SQL injection / XSS) |
-| `num_exception_handlers` | Bloques `except` (supresión silenciosa de errores)                        |
+| Feature                  | Descripción                                                               | Categoría   |
+| ------------------------ | ------------------------------------------------------------------------- | ----------- |
+| `ast_depth`              | Profundidad máxima del AST (complejidad estructural)                      | General     |
+| `dangerous_func_count`   | Invocaciones a `eval`, `exec`, `subprocess.Popen`, `os.system`, etc.     | Cat. 2–6    |
+| `total_calls`            | Total de llamadas a funciones en el fragmento                             | General     |
+| `num_imports`            | Número de sentencias `import`                                             | General     |
+| `has_string_concat`      | Flag binario: ¿hay concatenación de strings? (riesgo SQL injection / XSS) | Cat. 1, 6   |
+| `num_exception_handlers` | Bloques `except` (supresión silenciosa de errores)                        | General     |
+| `has_hardcoded_secret`   | Flag binario: ¿hay credencial/secreto con valor literal en el código?     | Cat. 5      |
 
 ### Pipeline de Preprocesamiento
 
@@ -228,7 +231,7 @@ Normalización de Etiquetas (0=seguro, 1=vulnerable)
 Inyección de datos sintéticos estilo Juliet Test Suite (+1200 muestras)
         │
         ▼
-Feature Engineering: TF-IDF Vectorizer + ASTFeatureExtractor
+Feature Engineering: TF-IDF Vectorizer + ASTFeatureExtractor (7 features)
         │
         ▼
 Concatenación: hstack(TF-IDF, AST Features)
@@ -253,12 +256,13 @@ El script [`scripts/analizador_ci.py`](./scripts/analizador_ci.py) es el **Gatek
 
 Cuando el pipeline le envía el archivo con los cambios del PR (`cambios.diff`), el analizador ejecuta el siguiente flujo de procesamiento:
 
-1. **Extracción y Filtrado del Diff:**
+1. **Extracción y Filtrado del Diff (solo archivos `.py`):**
    - Analiza el archivo `.diff` y extrae **únicamente las líneas de código añadidas** (aquellas que comienzan con `+`), omitiendo las líneas eliminadas o de contexto.
-   - Realiza un seguimiento exacto del archivo afectado y el número de línea correspondiente para cada adición.
+   - **Filtro crítico:** Solo procesa líneas pertenecientes a archivos con extensión `.py`. Cambios en `README.md`, archivos YAML, JSON, u otros formatos de documentación son completamente **ignorados** durante el análisis, evitando así falsos positivos cuando el PR incluye ediciones a documentación que menciona patrones de vulnerabilidades.
+   - Realiza un seguimiento exacto del archivo afectado y el número de línea correspondiente para cada adición de código Python.
 
 2. **Procesamiento de Features (Híbrido):**
-   - **Features Estructurales (AST):** Analiza sintácticamente el código utilizando el parser `ast` nativo de Python. El extractor recorre el árbol de sintaxis y calcula variables numéricas y banderas (`ast_depth`, `dangerous_func_count`, `total_calls`, `num_imports`, `has_string_concat`, `num_exception_handlers`, `has_hardcoded_secret`).
+   - **Features Estructurales (AST):** Analiza sintácticamente el código utilizando el parser `ast` nativo de Python. El extractor recorre el árbol de sintaxis y calcula **7 variables numéricas**: `ast_depth`, `dangerous_func_count`, `total_calls`, `num_imports`, `has_string_concat`, `num_exception_handlers`, `has_hardcoded_secret`.
    - **Features de Texto (TF-IDF):** Convierte el fragmento de código completo a una representación de términos utilizando el vectorizador TF-IDF preentrenado (`tfidf_vectorizer.joblib`).
 
 3. **Inferencia de Machine Learning:**
@@ -266,13 +270,32 @@ Cuando el pipeline le envía el archivo con los cambios del PR (`cambios.diff`),
    - Obtiene la clase predicha ($0$ o $1$) y la probabilidad de riesgo.
 
 4. **Motor de Decisiones (Arquitectura de 3 Capas):**
-   - **Capa 1 (Modelo ML):** Si el Random Forest predice clase $1$ (vulnerable) o estima una probabilidad de vulnerabilidad igual o mayor al **50%**, se marca el código para bloqueo automático.
-   - **Capa 2 (AST Estricto - Fast Fail):** El analizador inspecciona directamente el AST en búsqueda de vulnerabilidades críticas y deterministas. Si detecta llamadas inseguras sin protección (ej. `pickle.loads()`, `os.system()`, `yaml.load()` sin cargador seguro, algoritmos criptográficos rotos como `md5` y `sha1`, o secretos hardcodeados), el código se bloquea de forma inmediata e independiente del puntaje del modelo ML.
-   - **Capa 3 (Heurísticas de Texto):** Busca firmas comunes de payloads de inyección SQLi, XSS o llaves de API hardcodeadas a nivel de texto. Estas solo actúan como contexto complementario en el reporte generado y **nunca** bloquean el pipeline por sí solas (evitando falsos positivos si el desarrollador está editando archivos de documentación de seguridad).
+   - **Capa 1 (Modelo ML — Gate principal):** Si el Random Forest predice clase $1$ (vulnerable) o estima una probabilidad de vulnerabilidad igual o mayor al **50%**, se marca el código para bloqueo automático.
+   - **Capa 2 (AST Estricto — Fast Fail):** El analizador inspecciona directamente el AST en búsqueda de vulnerabilidades críticas y deterministas. Si detecta llamadas inseguras sin protección (ej. `pickle.loads()`, `os.system()`, `yaml.load()` sin cargador seguro, algoritmos criptográficos rotos como `hashlib.md5` y `hashlib.sha1`, o secretos hardcodeados con valor literal), el código se bloquea de forma inmediata e **independiente** del puntaje del modelo ML.
+   - **Capa 3 (Heurísticas de Texto — Solo contexto):** Busca firmas comunes de payloads de inyección SQLi, XSS o llaves de API hardcodeadas a nivel de texto. Estas **nunca** bloquean el pipeline por sí solas — solo añaden detalle al reporte cuando alguna de las capas anteriores ya disparó el bloqueo. Esto evita falsos positivos al editar archivos de documentación que discuten vulnerabilidades.
 
 5. **Salida y Reporte:**
-   - **Si el código es Vulnerable:** Genera un reporte detallado en `reporte_seguridad.txt` y prepara un mensaje de Telegram en `telegram_msg.txt` indicando la probabilidad de riesgo, los tipos de vulnerabilidad, el archivo y las líneas específicas que ocasionaron el bloqueo. El script finaliza con **Exit Code 1**, bloqueando el pipeline.
+   - **Si el código es Vulnerable:** Genera un reporte detallado en `reporte_seguridad.txt` (publicado como comentario en el PR) y prepara un mensaje de Telegram en `telegram_msg.txt` indicando la probabilidad de riesgo, los tipos de vulnerabilidad, el archivo y las líneas específicas que ocasionaron el bloqueo. El script finaliza con **Exit Code 1**, bloqueando el pipeline.
    - **Si el código es Seguro:** Escribe un mensaje de aprobación en `reporte_seguridad.txt` y finaliza con **Exit Code 0**, permitiendo que continúe el pipeline de CI/CD.
+
+### 🔬 Categorías de Vulnerabilidades Detectadas
+
+| Categoría | Descripción                               | Método de Detección         |
+| --------- | ----------------------------------------- | --------------------------- |
+| **Cat. 1** | SQL Injection (string concat + SQL keywords) | AST + Heurística         |
+| **Cat. 2** | Command Injection (`eval`, `exec`, `os.system`, `subprocess` con `shell=True`) | AST + Heurística |
+| **Cat. 3** | Deserialización Insegura (`pickle.loads`, `yaml.load` sin SafeLoader) | AST + Heurística |
+| **Cat. 4** | Path Traversal (`open(concat)`, `open(f-string)`) | AST especializado |
+| **Cat. 5** | Secretos Hardcodeados + Criptografía Débil (`hashlib.md5`, `hashlib.sha1`) | AST + Heurística |
+| **Cat. 6** | XSS (concat HTML) + SSRF (HTTP con URL dinámica) | AST + Heurística |
+
+### 🎨 Indicadores de Severidad en el Reporte
+
+| Icono | Significado                                                        |
+| ----- | ------------------------------------------------------------------ |
+| 🔴    | Vulnerabilidad confirmada por análisis AST directo (alta confianza) |
+| 🟠    | Patrón detectado por heurística de texto o señal del modelo ML     |
+| 🟡    | Concatenación de strings sospechosa (posible SQLi/XSS)            |
 
 ---
 
@@ -300,9 +323,8 @@ print(f"Accuracy promedio: {scores.mean():.4f} ± {scores.std():.4f}")
 | Estrategia                    | StratifiedKFold (balance de clases) |
 | Random State                  | 42 (reproducible)                   |
 
-> 📌 **Imagen requerida aquí:**
-> **`[INSERTAR CAPTURA]`** — Screenshot de la salida del notebook mostrando los 10 scores de validación cruzada y el accuracy promedio superior al 96.4%. El output real es:
->
+> 📸 **CAPTURA REQUERIDA:**
+> Tomar screenshot de la celda de validación cruzada en el notebook (VS Code o Jupyter), mostrando la salida con los 10 scores y el accuracy promedio. Debe verse algo similar a:
 > ```
 > Fold 01: 0.9665
 > Fold 02: 0.9638
@@ -311,6 +333,7 @@ print(f"Accuracy promedio: {scores.mean():.4f} ± {scores.std():.4f}")
 > ─────────────────────
 > CV Accuracy: 0.9643 ± 0.0031
 > ```
+> Insertar la imagen aquí: `![Validación Cruzada](./pipeline/cv_results.png)`
 
 Las gráficas generadas durante el entrenamiento están disponibles en la carpeta `pipeline/`:
 
@@ -320,27 +343,37 @@ Las gráficas generadas durante el entrenamiento están disponibles en la carpet
 | [`evaluacion_modelo.png`](./pipeline/evaluacion_modelo.png)     | Matriz de confusión y métricas del modelo              |
 | [`feature_importance.png`](./pipeline/feature_importance.png)   | Importancia de features del Random Forest              |
 
-> ![Descripción](./pipeline/evaluacion_modelo.png) — Screenshot de `evaluacion_modelo.png` mostrando la matriz de confusión y el reporte de clasificación (precision, recall, f1-score) del modelo final.
+> 📸 **CAPTURA REQUERIDA:**
+> Insertar screenshot de `evaluacion_modelo.png` mostrando la matriz de confusión y el reporte de clasificación (precision, recall, f1-score).
+> `![Evaluación del Modelo](./pipeline/evaluacion_modelo.png)`
 
-> ![Descripción](./pipeline/feature_importance.png) — Screenshot de `feature_importance.png` mostrando cuáles features del AST y TF-IDF son más importantes para el clasificador.
+> 📸 **CAPTURA REQUERIDA:**
+> Insertar screenshot de `feature_importance.png` mostrando cuáles features del AST y TF-IDF son más importantes para el clasificador.
+> `![Feature Importance](./pipeline/feature_importance.png)`
 
 ---
 
 ## 🔒 Mejoras de Seguridad y Reducción de Falsos Positivos
 
-Durante las iteraciones de fortalecimiento del pipeline, se implementaron mejoras críticas para asegurar tanto la rigurosidad del Gatekeeper como la viabilidad en entornos de desarrollo reales (evitando detener el pipeline por código legítimo):
+Durante las iteraciones de fortalecimiento del pipeline, se implementaron mejoras críticas para asegurar tanto la rigurosidad del Gatekeeper como la viabilidad en entornos de desarrollo reales:
 
-1. **Alineación de Capas (Cat 1-6 determinista):** 
-   - Anteriormente, vulnerabilidades como *Secretos Hardcodeados* (Cat 5) o *SSRF/XSS* (Cat 6) dependían únicamente de la probabilidad estimada del modelo de ML para el bloqueo. Ahora, las detecciones directas a nivel de AST y de inyecciones actúan como **bloqueadores deterministas inmediatos**, garantizando que ningún patrón inseguro pase desapercibido.
-2. **Mitigación de Falsos Positivos en Operaciones Seguras:**
-   - **Inyección de Comandos (Cat 2):** El análisis de AST verifica si `subprocess.run/call/Popen` utiliza `shell=True`. Si es `shell=False` (o no está especificado) y los argumentos se pasan como una lista de strings, se clasifica como seguro.
-   - **Deserialización Insegura (Cat 3):** Excluye llamadas a `json.load()` y `json.loads()`, puesto que la serialización JSON nativa no permite ejecución remota de código arbitrario (RCE). Permite la carga de YAML siempre que se proporcione explícitamente `SafeLoader`.
-   - **Path Traversal (Cat 4):** El analizador ya no bloquea llamadas simples a `open(variable)` que utilicen rutas previamente validadas y sanitizadas (ej. resoluciones de path mediante `os.path.realpath` contra un directorio base). Únicamente se disparará un bloqueo inmediato en AST si el primer argumento de `open` contiene concatenaciones directas con variables (ej: `open("uploads/" + file)`) o interpolaciones f-string en el sitio de llamada.
-   - **SSRF (Cat 6):** Excluye llamadas HTTP (como `requests.get()` o `urllib.request.urlopen()`) que utilicen cadenas de texto (URL) estáticas y constantes. Únicamente se evalúan como sospechosas las peticiones con variables de URL dinámicas no sanitizadas.
-3. **Sincronización del Entorno de Ejecución:**
-   - Configuración estricta en el Runner de GitHub Actions para usar Python `3.11` e instalar la versión exacta de la biblioteca de Machine Learning (`scikit-learn==1.8.0`) con la que se entrenó y serializó el modelo, previniendo excepciones en la de-serialización de archivos `.joblib`.
-4. **Optimización con Datos Sintéticos (Juliet Test Suite):**
-   - Se inyectaron más de 1,200 muestras sintéticas estructuradas de código Python seguro e inseguro (basadas en la Juliet Test Suite de la NSA/NIST) en la etapa de preprocesamiento, logrando subir la precisión (accuracy) promedio del modelo de un 82% a más de un **96.43%**.
+1. **Filtrado Inteligente por Tipo de Archivo (Fix principal):**
+   - El parser del diff (`parse_diff`) ahora **solo extrae y analiza líneas de archivos `.py`**. Cambios en `README.md`, `.yml`, `.json`, Dockerfiles u otros archivos que no sean código Python fuente son descartados silenciosamente antes de cualquier análisis. Esto resuelve el problema de falsos positivos donde editar documentación que menciona vulnerabilidades (como `subprocess`, `requests.get`, etc.) disparaba bloqueos incorrectos en el pipeline.
+
+2. **Alineación de Capas (Cat 1-6 determinista):**
+   - Anteriormente, vulnerabilidades como *Secretos Hardcodeados* (Cat 5) o *SSRF/XSS* (Cat 6) dependían únicamente de la probabilidad estimada del modelo de ML para el bloqueo. Ahora, las detecciones directas a nivel de AST actúan como **bloqueadores deterministas inmediatos**, garantizando que ningún patrón inseguro pase desapercibido independientemente del puntaje del modelo.
+
+3. **Mitigación de Falsos Positivos en Operaciones Seguras:**
+   - **Inyección de Comandos (Cat 2):** El análisis de AST verifica si `subprocess.run/call/Popen` utiliza `shell=True`. Si es `shell=False` (o no está especificado) y los argumentos se pasan como lista de strings, se clasifica automáticamente como seguro y no se contabiliza.
+   - **Deserialización Insegura (Cat 3):** Excluye llamadas a `json.load()` y `json.loads()`, puesto que la serialización JSON nativa no permite ejecución remota de código (RCE). Permite `yaml.load()` siempre que se proporcione explícitamente `SafeLoader` como argumento.
+   - **Path Traversal (Cat 4):** El analizador no bloquea `open(variable)` con rutas simples. Solo dispara el bloqueo si el primer argumento de `open` contiene **concatenaciones directas** (ej: `open("uploads/" + file)`) o **f-strings interpolados** en el sitio de la llamada. Se eliminó `os.path.join(` de las heurísticas de texto al ser un patrón muy común en código legítimo.
+   - **SSRF (Cat 6):** Excluye llamadas HTTP (`requests.get()`, `urllib.request.urlopen()`, etc.) que usen cadenas de texto **estáticas y constantes** como URL. Solo se marcan como sospechosas las peticiones con variables de URL dinámicas y no sanitizadas.
+
+4. **Sincronización del Entorno de Ejecución:**
+   - El Runner de GitHub Actions usa Python `3.11` e instala la versión exacta de scikit-learn (`scikit-learn==1.8.0`) con la que se entrenó y serializó el modelo, previniendo excepciones al deserializar los archivos `.joblib`.
+
+5. **Optimización con Datos Sintéticos (Juliet Test Suite):**
+   - Se inyectaron más de 1,200 muestras sintéticas de código Python seguro e inseguro (basadas en la Juliet Test Suite de la NSA/NIST) en la etapa de preprocesamiento, logrando subir la accuracy promedio del modelo de un 82% a más de un **96.43%**.
 
 ---
 
@@ -482,7 +515,7 @@ La API estará disponible en: `http://localhost:8000`
 
 ---
 
-## 📓 Cómo Entrenaron el Modelo
+## 📓 Cómo Entrenar el Modelo
 
 El entrenamiento completo está documentado en el script [`pipeline/fase1_ingesta_feature_engineering.py`](./pipeline/fase1_ingesta_feature_engineering.py), que tiene estructura de **Jupyter Notebook compatible** (celdas marcadas con `# %%`).
 
@@ -495,11 +528,11 @@ El entrenamiento completo está documentado en el script [`pipeline/fase1_ingest
 | **3**  | Limpieza: nulos, duplicados, longitud [3–500 líneas] | `clean_dataset()`                                               |
 | **4**  | Normalización de etiquetas a 0/1                     | `normalize_labels()`                                            |
 | **5**  | Inyección de datos sintéticos (Juliet Test Suite)    | `inject_synthetic_data()`                                       |
-| **6**  | Extracción de features AST                           | `ASTFeatureExtractor`                                           |
+| **6**  | Extracción de 7 features AST                         | `ASTFeatureExtractor`                                           |
 | **7**  | Vectorización TF-IDF                                 | `TfidfVectorizer.fit_transform()`                               |
 | **8**  | Concatenación de matrices                            | `hstack(tfidf_features, ast_features)`                          |
 | **9**  | Entrenamiento Random Forest                          | `RandomForestClassifier.fit()`                                  |
-| **10** | Validación cruzada 10-fold                           | `cross_val_score(..., cv=10)` → **> 82%**                       |
+| **10** | Validación cruzada 10-fold                           | `cross_val_score(..., cv=10)` → **> 96.4%**                     |
 | **11** | Serialización con joblib                             | `joblib.dump(model, 'models/rf_vulnerability_detector.joblib')` |
 
 ### Ejecutar como Notebook
@@ -514,8 +547,9 @@ pip install jupytext
 jupytext --to notebook pipeline/fase1_ingesta_feature_engineering.py
 ```
 
-> 📌 **Imagen requerida aquí:**
-> **`[INSERTAR CAPTURA]`** — Screenshot del notebook abierto en Jupyter/VS Code mostrando las celdas de entrenamiento en ejecución, idealmente la celda de validación cruzada con los resultados visibles en el output.
+> 📸 **CAPTURA REQUERIDA:**
+> Screenshot del notebook abierto en Jupyter/VS Code mostrando las celdas de entrenamiento en ejecución, idealmente la celda de validación cruzada con los resultados visibles en el output.
+> Insertar imagen aquí: `![Notebook de Entrenamiento](./pipeline/notebook_training.png)`
 
 ---
 
@@ -543,11 +577,13 @@ El pipeline envía notificaciones automáticas a Telegram en **cada etapa críti
 3. Copia el **TOKEN** generado → guardarlo como `TELEGRAM_TOKEN` en GitHub Secrets
 4. Obtén tu **Chat ID** hablando con [@userinfobot](https://t.me/userinfobot) → guardarlo como `TELEGRAM_CHAT_ID`
 
-> 📌 **Imagen requerida aquí:**
-> **`[INSERTAR CAPTURA]`** — Screenshot del chat de Telegram mostrando las notificaciones reales recibidas durante la ejecución del pipeline: al menos una notificación de inicio, una de seguridad (PASS o ALERTA), y una de despliegue exitoso.
+> 📸 **CAPTURA REQUERIDA:**
+> Screenshot del chat de Telegram mostrando notificaciones reales del pipeline en ejecución: inicio de revisión, resultado de seguridad (aprobado o alerta), y despliegue exitoso.
+> Insertar imagen aquí: `![Notificaciones Telegram](./pipeline/telegram_notifications.png)`
 
-> 📌 **Imagen requerida aquí:**
-> **`[INSERTAR CAPTURA]`** — Screenshot adicional mostrando la notificación de `🚨 ALERTA CRÍTICA` cuando el Gatekeeper detecta código vulnerable y bloquea el PR.
+> 📸 **CAPTURA REQUERIDA:**
+> Screenshot adicional mostrando la notificación `🚨 ALERTA CRÍTICA` cuando el Gatekeeper detecta código vulnerable y bloquea el PR (con el detalle de categoría de vulnerabilidad).
+> Insertar imagen aquí: `![Alerta Crítica Telegram](./pipeline/telegram_alert.png)`
 
 ---
 
@@ -605,11 +641,13 @@ CMD uvicorn main:app --host 0.0.0.0 --port $PORT
 | Info Leakage         | Mensajes de error genéricos (no revelan detalles internos) |
 | Denial of Wallet     | Límite de 10 asientos por reserva                          |
 
-> 📌 **Imagen requerida aquí:**
-> **`[INSERTAR CAPTURA]`** — Screenshot de la aplicación funcionando en `https://pipeline-seguro.onrender.com/docs` mostrando la interfaz Swagger UI con los endpoints disponibles (`GET /eventos` y `POST /reservas`).
+> 📸 **CAPTURA REQUERIDA:**
+> Screenshot de la app funcionando en `https://pipeline-seguro.onrender.com/docs` mostrando la interfaz Swagger UI con los endpoints (`GET /eventos` y `POST /reservas`).
+> Insertar imagen aquí: `![Swagger UI en Producción](./pipeline/swagger_prod.png)`
 
-> 📌 **Imagen requerida aquí:**
-> **`[INSERTAR CAPTURA]`** — Screenshot del dashboard de Render mostrando el servicio `pipeline-seguro` activo (status: Live/Running) y el historial de despliegues automáticos activados por el webhook del pipeline.
+> 📸 **CAPTURA REQUERIDA:**
+> Screenshot del dashboard de Render mostrando el servicio `pipeline-seguro` activo (status: Live/Running) e historial de despliegues automáticos activados por el webhook.
+> Insertar imagen aquí: `![Dashboard de Render](./pipeline/render_dashboard.png)`
 
 ---
 
@@ -657,7 +695,7 @@ ProyectoU2/
 │   └── tests/                     ← Pruebas funcionales Pytest
 │
 ├── scripts/
-│   └── analizador_ci.py           ← Gatekeeper ML (inferencia en el pipeline)
+│   └── analizador_ci.py           ← Gatekeeper ML (inferencia, filtro .py, 3 capas)
 │
 ├── CVEFixes.csv                   ← Dataset de entrenamiento (código seguro/vulnerable)
 ├── CVEFixes.csv.zip               ← Dataset comprimido
@@ -673,19 +711,20 @@ ProyectoU2/
 | --- | ----------------------------------------------------- | ----------------------------------------------------------------------- |
 | 1   | Ramas obligatorias (`dev`, `test`, `main`)            | ✅ Cumplido                                                             |
 | 2   | Trigger de PR (`dev → test`)                          | ✅ Cumplido                                                             |
-| 3   | Modelo de Minería de Datos (sin LLMs)                 | ✅ Random Forest + AST                                                  |
+| 3   | Modelo de Minería de Datos (sin LLMs)                 | ✅ Random Forest + AST (7 features)                                     |
 | 4   | PR bloqueado si código es vulnerable                  | ✅ `exit(1)` + PR cerrado                                               |
 | 5   | Comentario detallado en PR rechazado                  | ✅ `gh pr comment --body-file reporte_seguridad.txt`                    |
 | 6   | Issue automático + Label (`fixing-required`)          | ✅ `gh issue create`                                                    |
-| 7   | Merge automático a `test` + Pytest                    | ✅ `gh pr merge --auto`                                                 |
+| 7   | Merge automático a `test` + Pytest                    | ✅ `gh pr merge --admin`                                                |
 | 8   | Merge a `main` + Deploy en Render                     | ✅ Webhook HTTPS                                                        |
-| 9   | Notificaciones Telegram completas (todos los eventos) | ✅ 6 eventos cubiertos                                                  |
-| 10  | Accuracy > 96.4% demostrada                            | ✅ Cross-Validation 10-fold                                             |
+| 9   | Notificaciones Telegram completas (todos los eventos) | ✅ 8 eventos cubiertos                                                  |
+| 10  | Accuracy > 96.4% demostrada                           | ✅ Cross-Validation 10-fold                                             |
 | 11  | Modelo entrenado con dataset público                  | ✅ CVEFixes                                                             |
-| 12  | Features de AST (`eval`, `subprocess`, etc.)          | ✅ `ASTFeatureExtractor`                                                |
+| 12  | Features de AST (`eval`, `subprocess`, etc.)          | ✅ `ASTFeatureExtractor` (7 features, Cat. 1–6)                         |
 | 13  | Exportado en `.joblib`                                | ✅ `pipeline/models/`                                                   |
 | 14  | Backend desplegado en producción                      | ✅ [pipeline-seguro.onrender.com](https://pipeline-seguro.onrender.com) |
 | 15  | Dockerfile seguro (non-root, slim)                    | ✅ `appuser`, `python:3.10-slim`                                        |
+| 16  | Sin falsos positivos en archivos de documentación     | ✅ Filtro `.py` exclusivo en `parse_diff()`                             |
 
 <div align="center">
 

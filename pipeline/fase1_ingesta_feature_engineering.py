@@ -600,29 +600,78 @@ def inject_synthetic_data(df: pd.DataFrame, code_col: str) -> pd.DataFrame:
     logger.info("💉 Inyectando datos sintéticos estilo Juliet para mejorar varianza...")
     
     synthetic_safe_snippets = [
-        "class DataProcessor:\n    def __init__(self, data):\n        self.data = data\n    def clean(self):\n        return [str(x).strip() for x in self.data if x]",
+        # Cat. 1 — SQL seguro (parametrizado)
         "from sqlalchemy.orm import Session\ndef get_user(db: Session, user_id: int):\n    return db.query(User).filter(User.id == user_id).first()",
+        "def get_user_safe(db, user_id):\n    # Consulta parametrizada — segura contra SQLi\n    return db.execute('SELECT * FROM users WHERE id = :id', {'id': user_id})",
+        "import sqlite3\ndef get_record_safe(record_id: int):\n    conn = sqlite3.connect('app.db')\n    cur = conn.cursor()\n    cur.execute('SELECT * FROM records WHERE id = ?', (record_id,))\n    return cur.fetchone()",
+        # Cat. 2 — Subprocess seguro
+        "import subprocess\ndef ping_host(host: str):\n    # Safe: lista de args sin shell=True\n    return subprocess.run(['ping', '-c', '4', host], capture_output=True, shell=False)",
+        "import shlex, subprocess\ndef run_safe(cmd_str: str):\n    args = shlex.split(cmd_str)\n    return subprocess.run(args, shell=False, capture_output=True)",
+        # Cat. 3 — Deserialización segura
+        "import yaml\ndef parse_config_safe(data: str):\n    # yaml.safe_load es seguro — no ejecuta código arbitrario\n    return yaml.safe_load(data)",
+        "import yaml\ndef load_config(stream):\n    return yaml.load(stream, Loader=yaml.SafeLoader)",
+        "import json\ndef deserialize_safe(data: str):\n    # JSON no permite ejecución de código\n    return json.loads(data)",
+        # Cat. 4 — Manejo seguro de rutas
+        "import os\ndef read_file_safe(base_dir: str, filename: str):\n    # Validación de path — previene Path Traversal\n    safe_name = os.path.basename(filename)\n    full_path = os.path.realpath(os.path.join(base_dir, safe_name))\n    if not full_path.startswith(os.path.realpath(base_dir)):\n        raise ValueError('Path traversal detectado')\n    with open(full_path) as f:\n        return f.read()",
+        "from pathlib import Path\ndef serve_static(root: str, requested: str):\n    safe_path = (Path(root) / requested).resolve()\n    if not str(safe_path).startswith(str(Path(root).resolve())):\n        raise PermissionError('Access denied')\n    return safe_path.read_bytes()",
+        # Cat. 5a — Secretos desde env vars (seguro)
+        "import os\n# Leer secretos desde variables de entorno — nunca hardcodeados\nAPI_KEY = os.environ.get('API_KEY', '')\nDATABASE_PASSWORD = os.environ.get('DB_PASSWORD', '')",
+        "from dotenv import load_dotenv\nimport os\nload_dotenv()\nSECRET_KEY = os.getenv('SECRET_KEY')\nTOKEN = os.getenv('AUTH_TOKEN')",
+        # Cat. 5b — Hashing seguro
         "def hash_password(password: str) -> str:\n    import bcrypt\n    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')",
+        "import hashlib\ndef compute_checksum_safe(data: bytes) -> str:\n    # SHA-256 es seguro para checksums\n    return hashlib.sha256(data).hexdigest()",
+        "import hashlib\ndef hash_data_safe(value: str) -> str:\n    return hashlib.sha256(value.encode()).hexdigest()",
+        # Cat. 6a — XSS seguro
+        "import html\ndef render_template(user_input: str) -> str:\n    safe_input = html.escape(user_input)\n    return f'<div>{safe_input}</div>'",
+        "from markupsafe import escape\ndef render_safe(username: str) -> str:\n    return f'<h1>Bienvenido {escape(username)}</h1>'",
+        # Cat. 6b — Requests seguro con validación de URL
+        "import requests\nfrom urllib.parse import urlparse\nALLOWED_HOSTS = {'api.example.com', 'data.myapp.com'}\ndef fetch_safe(url: str):\n    parsed = urlparse(url)\n    if parsed.netloc not in ALLOWED_HOSTS:\n        raise ValueError('URL no permitida')\n    return requests.get(url, timeout=5)",
+        # Generales
+        "class DataProcessor:\n    def __init__(self, data):\n        self.data = data\n    def clean(self):\n        return [str(x).strip() for x in self.data if x]",
         "def sanitize_input(user_input: str) -> str:\n    import re\n    return re.sub(r'[^a-zA-Z0-9 ]', '', user_input)",
-        "import html\ndef render_template(user_input):\n    safe_input = html.escape(user_input)\n    return f'<div>{safe_input}</div>'",
-        "import subprocess\ndef ping_host(host):\n    # Safe usage of subprocess with list and no shell\n    return subprocess.run(['ping', '-c', '4', host], capture_output=True)",
-        "def greet_user(username):\n    # F-string seguro\n    return f'Hello, {username}! Welcome back.'",
-        "def get_user_safe(db, user_id):\n    # Parametrizacion\n    return db.execute('SELECT * FROM users WHERE id = :id', {'id': user_id})",
-        "def log_action(user, action):\n    # Uso de format seguro\n    print('User {} performed {}'.format(user, action))"
+        "def greet_user(username: str) -> str:\n    return f'Hello, {username}! Welcome back.'",
+        "def log_action(user, action):\n    print('User {} performed {}'.format(user, action))"
     ]
 
     synthetic_vuln_snippets = [
+        # Cat. 2 — Command Injection
         "import os\ndef execute_command(user_input):\n    # Command Injection Vulnerability\n    os.system('ping -c 4 ' + user_input)",
         "import subprocess\ndef run_query(query):\n    # RCE Vulnerability\n    subprocess.Popen(query, shell=True)",
+        "import subprocess\ndef run_cmd(cmd):\n    # Command Injection via subprocess.run\n    subprocess.run(cmd, shell=True)",
+        "from os import system as sys_call\ndef run_cmd_alias(input_user):\n    sys_call('ping ' + input_user)",
+        "import os as o\ndef run_cmd_mod_alias(input_user):\n    o.system('ping ' + input_user)",
+        # Cat. 1 — SQL Injection
         "import sqlite3\ndef get_user_vuln(username):\n    # SQL Injection Vulnerability\n    conn = sqlite3.connect('users.db')\n    cursor = conn.cursor()\n    cursor.execute('SELECT * FROM users WHERE username = ' + username)\n    return cursor.fetchall()",
-        "def render_page(user_input):\n    # XSS Vulnerability\n    return '<html><body>' + user_input + '</body></html>'",
-        "import pickle\ndef load_data(serialized_data):\n    # Insecure Deserialization\n    return pickle.loads(serialized_data)",
-        "def execute_dynamic_code(code_string):\n    # Code Injection\n    eval(code_string)",
         "def query_db_fstring(db, user_id):\n    # SQLi via f-string\n    return db.execute(f'SELECT * FROM users WHERE id = {user_id}')",
         "def query_db_format(db, user_id):\n    # SQLi via format\n    return db.execute('SELECT * FROM users WHERE id = {}'.format(user_id))",
         "def query_db_percent(db, user_id):\n    # SQLi via %\n    return db.execute('SELECT * FROM users WHERE id = %s' % user_id)",
-        "from os import system as sys_call\ndef run_cmd_alias(input_user):\n    sys_call('ping ' + input_user)",
-        "import os as o\ndef run_cmd_mod_alias(input_user):\n    o.system('ping ' + input_user)"
+        # Cat. 3 — Deserialización insegura
+        "import pickle\ndef load_data(serialized_data):\n    # Insecure Deserialization — pickle.loads with untrusted data\n    return pickle.loads(serialized_data)",
+        "import pickle\ndef load_from_file(filepath):\n    # Insecure Deserialization — pickle.load from file\n    with open(filepath, 'rb') as f:\n        return pickle.load(f)",
+        "import yaml\ndef parse_config(user_yaml):\n    # Insecure YAML — yaml.load without SafeLoader allows RCE\n    return yaml.load(user_yaml)",
+        "import yaml\ndef load_settings(data):\n    # yaml.load with Loader=None is dangerous\n    config = yaml.load(data, Loader=None)\n    return config",
+        # Cat. 4 — Path Traversal
+        "def read_file_vuln(filename):\n    # Path Traversal — user controls filename\n    ruta = 'uploads/' + filename\n    with open(ruta, 'r') as f:\n        return f.read()",
+        "import os\ndef get_file(base_dir, user_path):\n    # Path Traversal via os.path.join with absolute path\n    full_path = os.path.join(base_dir, user_path)\n    with open(full_path) as f:\n        return f.read()",
+        "def serve_file(requested_file):\n    # Path Traversal via f-string\n    path = f'static/{requested_file}'\n    with open(path, 'rb') as f:\n        return f.read()",
+        # Cat. 5a — Hardcoded secrets
+        "# Hardcoded API key — credential leak\nAPI_KEY = 'AIzaSyD-1234567890-ABCDE-FGHIJ'\ndef get_data():\n    import requests\n    return requests.get('https://api.example.com', params={'key': API_KEY})",
+        "# Hardcoded password in source code\nDATABASE_PASSWORD = 's3cr3t_p4ssw0rd_123'\nDB_TOKEN = 'ghp_abcdefghijklmnopqrstuvwxyz123456'\ndef connect_db():\n    pass",
+        "class Config:\n    # Hardcoded credentials — security antipattern\n    SECRET_KEY = 'super-secret-django-key-12345'\n    API_KEY = 'sk-abcdefghijklmnopqrstuvwxyz'",
+        # Cat. 5b — Criptografía débil
+        "import hashlib\ndef hash_password_md5(password):\n    # MD5 is cryptographically broken — do not use for passwords\n    hasher = hashlib.md5()\n    hasher.update(password.encode('utf-8'))\n    return hasher.hexdigest()",
+        "import hashlib\ndef hash_password_sha1(password: str) -> str:\n    # SHA1 is deprecated for password hashing\n    hasher = hashlib.sha1()\n    hasher.update(password.encode('utf-8'))\n    return hasher.hexdigest()",
+        "import hashlib\ndef checksum_weak(data):\n    # Using MD5 for integrity check — vulnerable to collision attacks\n    return hashlib.md5(data).hexdigest()",
+        # Cat. 6a — XSS
+        "def render_page(user_input):\n    # XSS Vulnerability — unsanitized user input in HTML\n    return '<html><body>' + user_input + '</body></html>'",
+        "def xss_template(nombre_usuario):\n    # XSS via manual HTML string concatenation\n    return '<html><body><h1>Bienvenido ' + nombre_usuario + '</h1></body></html>'",
+        "def build_response(data):\n    # XSS via f-string with user data\n    return f'<div class=\"user\">{data}</div>'",
+        # Cat. 6b — SSRF
+        "import requests\ndef fetch_url(url_usuario):\n    # SSRF — fetches arbitrary user-supplied URL\n    return requests.get(url_usuario)",
+        "import requests\ndef proxy_request(target_url):\n    # SSRF — no URL validation before making request\n    resp = requests.post(target_url, json={'data': 'test'})\n    return resp.json()",
+        # Cat. 2b — Code injection
+        "def execute_dynamic_code(code_string):\n    # Code Injection via eval()\n    eval(code_string)",
+        "def run_user_script(script):\n    # Code Injection via exec()\n    exec(script)",
     ]
     
     synthetic_rows = []
@@ -693,72 +742,83 @@ logger.info("📊 Gráfico de distribución guardado.")
 # CELDA 4: EXTRACCIÓN DE CARACTERÍSTICAS CON AST (ASTFeatureExtractor)
 # ══════════════════════════════════════════════════════════════════════════════
 
+# Patrón regex para detectar nombres de variables que indican secretos
+import re as _re
+_SECRET_NAME_PATTERNS = _re.compile(
+    r"(secret|api[_\-]?key|password|passwd|token|credential|auth[_\-]?key|"
+    r"private[_\-]?key|access[_\-]?key|llave[_\-]?api|contrasena|clave)",
+    _re.IGNORECASE,
+)
+
+
 class ASTFeatureExtractor(ast.NodeVisitor):
     """
     Extractor de características de seguridad a partir del AST de Python.
-
-    Esta clase hereda de `ast.NodeVisitor` para recorrer el Árbol de Sintaxis
-    Abstracta de un fragmento de código Python y extraer métricas que son
-    indicadores de posibles vulnerabilidades de seguridad.
+    Versión 2.0: detecta vulnerabilidades de Cat. 1–6.
 
     CARACTERÍSTICAS EXTRAÍDAS:
     ─────────────────────────────────────────────────────────────────────────
-    1. ast_depth (int):
-       Profundidad máxima del árbol AST. Un AST profundo puede indicar
-       código con lógica compleja u ofuscada, patrones comunes en código
-       malicioso que intenta ocultar su comportamiento.
+    1. ast_depth (int)           — Profundidad máxima del AST
+    2. dangerous_func_count (int)— Conteo de funciones peligrosas (Cat. 2-6)
+    3. total_calls (int)         — Total de llamadas a funciones
+    4. num_imports (int)         — Cantidad de sentencias import
+    5. has_string_concat (int)   — Flag: concatenación de strings (SQLi/XSS)
+    6. num_exception_handlers(int)— Bloques except
+    7. has_hardcoded_secret (int)— Flag: credencial hardcodeada (Cat. 5 nuevo)
 
-    2. dangerous_func_count (int):
-       Conteo de invocaciones a funciones consideradas peligrosas:
-       - eval()           → Ejecución dinámica de expresiones (inyección de código)
-       - exec()           → Ejecución dinámica de sentencias (ejecución remota)
-       - subprocess.Popen → Ejecución de comandos del SO (command injection)
-       - subprocess.call  → Ejecución de comandos del SO (command injection)
-       - os.system        → Ejecución directa de shell commands (RCE)
-
-    3. total_calls (int):
-       Número total de llamadas a funciones en el código. Un ratio alto
-       de dangerous_func_count / total_calls es un fuerte indicador.
-
-    4. num_imports (int):
-       Cantidad de sentencias import. Muchos imports inusuales pueden
-       indicar código que intenta importar módulos del sistema para
-       escalar privilegios.
-
-    5. has_string_concat (int):
-       Flag binario (0/1) que indica si hay concatenación de strings.
-       La concatenación de strings es un patrón común en SQL injection
-       y XSS (e.g., "SELECT * FROM users WHERE id=" + user_input).
-
-    6. num_exception_handlers (int):
-       Cantidad de bloques except. Código malicioso a menudo usa
-       try/except vacíos para suprimir errores silenciosamente.
-
-    USO:
-        extractor = ASTFeatureExtractor()
-        features = extractor.extract("eval(input())")
-        # → {'ast_depth': 3, 'dangerous_func_count': 1, ...}
+    Cat. 1 — SQL Injection: string concat + keywords SQL
+    Cat. 2 — Command Injection: eval, exec, os.system, subprocess
+    Cat. 3 — Deserialización insegura: pickle.loads, yaml.load
+    Cat. 4 — Path Traversal: open(concat), os.path.join(concat)
+    Cat. 5 — Hardcoded secrets + Criptografía débil: md5, sha1
+    Cat. 6 — XSS: string concat con HTML / SSRF: requests.get con variable
     """
 
-    # Lista de funciones peligrosas a buscar en el AST.
-    # Estas funciones permiten ejecución dinámica de código o comandos del SO,
-    # y son los vectores de ataque más comunes en Python.
     DANGEROUS_FUNCTIONS: List[str] = [
-        "eval",              # Evalúa una expresión Python dinámica
-        "exec",              # Ejecuta código Python arbitrario
-        "subprocess.Popen",  # Crea un proceso del SO
-        "subprocess.call",   # Ejecuta un comando del SO y espera
-        "os.system",         # Ejecuta un comando en la shell del SO
+        "eval", "exec",
+        "subprocess.Popen", "subprocess.call", "subprocess.run",
+        "os.system", "os.popen",
+        "pickle.loads", "pickle.load",
+        "yaml.load",
+        "hashlib.md5", "hashlib.sha1",
+        "requests.get", "requests.post",
     ]
 
-    # Versión simplificada para búsqueda rápida por nombre de función
-    _SIMPLE_DANGEROUS = {"eval", "exec"}
+    # Funciones peligrosas cuando se importan directamente
+    _SIMPLE_DANGEROUS = {
+        "eval", "exec",
+        "loads", "load",   # pickle.loads / yaml.load importado directamente
+        "system", "Popen", "call",
+    }
 
-    # Patrones compuestos (módulo.función) para búsqueda en llamadas con atributo
+    # Patrones compuestos (módulo.función)
     _COMPOUND_DANGEROUS = {
+        # Cat. 2 — Command Injection
         ("subprocess", "Popen"),
         ("subprocess", "call"),
+        ("subprocess", "run"),
         ("os", "system"),
+        ("os", "popen"),
+        # Cat. 3 — Deserialización insegura
+        ("pickle", "loads"),
+        ("pickle", "load"),
+        ("yaml", "load"),
+        ("marshal", "loads"),
+        # Cat. 5 — Criptografía débil
+        ("hashlib", "md5"),
+        ("hashlib", "sha1"),
+        # Cat. 6 — SSRF
+        ("requests", "get"),
+        ("requests", "post"),
+        ("requests", "put"),
+        ("requests", "request"),
+    }
+
+    # Atributos peligrosos genéricos (para alias de módulo)
+    _DANGEROUS_ATTRS = {
+        "system", "Popen", "popen",   # Cat. 2
+        "loads", "load",               # Cat. 3
+        "md5", "sha1",                 # Cat. 5
     }
 
     def __init__(self):
@@ -767,13 +827,14 @@ class ASTFeatureExtractor(ast.NodeVisitor):
 
     def _reset(self):
         """Reinicia todos los contadores internos para un nuevo análisis."""
-        self.ast_depth: int = 0             # Profundidad máxima del AST
-        self.dangerous_func_count: int = 0  # Conteo de funciones peligrosas
-        self.total_calls: int = 0           # Total de llamadas a funciones
-        self.num_imports: int = 0           # Número de sentencias import
-        self.has_string_concat: int = 0     # Flag de concatenación de strings
+        self.ast_depth: int = 0               # Profundidad máxima del AST
+        self.dangerous_func_count: int = 0    # Conteo de funciones peligrosas
+        self.total_calls: int = 0             # Total de llamadas a funciones
+        self.num_imports: int = 0             # Número de sentencias import
+        self.has_string_concat: int = 0       # Flag de concatenación de strings
         self.num_exception_handlers: int = 0  # Bloques except
-        self._current_depth: int = 0        # Depth tracker durante el recorrido
+        self.has_hardcoded_secret: int = 0    # Flag: credencial hardcodeada (Cat.5)
+        self._current_depth: int = 0          # Depth tracker durante el recorrido
 
     def _compute_depth(self, node: ast.AST, current_depth: int = 0) -> int:
         """
@@ -802,20 +863,99 @@ class ASTFeatureExtractor(ast.NodeVisitor):
 
     def visit_Call(self, node: ast.Call):
         self.total_calls += 1
-        
-        # Detecta eval, exec, o funciones importadas directamente (ej: from os import system)
+
         if isinstance(node.func, ast.Name):
-            if node.func.id in {"eval", "exec", "system", "Popen", "call"}:
+            # Detecta eval, exec, loads, load, system, Popen, call importados directamente
+            if node.func.id in self._SIMPLE_DANGEROUS:
                 self.dangerous_func_count += 1
                 logger.debug(f"   🚨 Función peligrosa detectada: {node.func.id}()")
-                
-        # Detecta llamadas compuestas con alias de módulo (ej: o.system o sub.Popen) y llamadas a format()
+
         elif isinstance(node.func, ast.Attribute):
-            if node.func.attr in {"system", "Popen", "call"}:
-                self.dangerous_func_count += 1
-                logger.debug(f"   🚨 Función peligrosa detectada: (alias).{node.func.attr}()")
-            elif node.func.attr == "format":
+            attr = node.func.attr
+            module_name = None
+            if isinstance(node.func.value, ast.Name):
+                module_name = node.func.value.id
+            elif isinstance(node.func.value, ast.Attribute):
+                module_name = node.func.value.attr
+
+            if module_name and (module_name, attr) in self._COMPOUND_DANGEROUS:
+                # yaml.load con SafeLoader es seguro — no contar
+                if module_name == "yaml" and attr == "load":
+                    args = node.args + [kw.value for kw in node.keywords]
+                    uses_safe = any(
+                        (isinstance(a, ast.Attribute) and "safe" in a.attr.lower()) or
+                        (isinstance(a, ast.Name) and "safe" in a.id.lower())
+                        for a in args
+                    )
+                    if not uses_safe:
+                        self.dangerous_func_count += 1
+                        logger.debug(f"   \U0001f6a8 yaml.load() sin SafeLoader detectado")
+                # FIX: subprocess.run/call/Popen sin shell=True es seguro
+                elif module_name == "subprocess" and attr in {"run", "call", "Popen"}:
+                    shell_kwarg = next(
+                        (kw for kw in node.keywords if kw.arg == "shell"), None
+                    )
+                    shell_is_true = (
+                        shell_kwarg is not None and
+                        isinstance(shell_kwarg.value, ast.Constant) and
+                        shell_kwarg.value.value is True
+                    )
+                    if shell_is_true:
+                        self.dangerous_func_count += 1
+                        logger.debug(f"   \U0001f6a8 subprocess.{attr}(shell=True) detectado")
+                    # else: shell=False o no especificado → seguro, no se cuenta
+                elif module_name in {"requests", "httpx", "urllib", "urllib2"} and attr in {"get", "post", "put", "delete", "request", "urlopen"}:
+                    url_arg = None
+                    if node.args:
+                        url_arg = node.args[0]
+                    else:
+                        url_arg = next((kw.value for kw in node.keywords if kw.arg == "url"), None)
+                    if url_arg and isinstance(url_arg, ast.Constant):
+                        pass  # URL estática → segura, no se cuenta
+                    else:
+                        self.dangerous_func_count += 1
+                        logger.debug(f"   \U0001f6a8 SSRF potencial detectado: {module_name}.{attr}() con URL variable")
+                else:
+                    self.dangerous_func_count += 1
+                    logger.debug(f"   \U0001f6a8 Función peligrosa detectada: {module_name}.{attr}()")
+            elif attr in self._DANGEROUS_ATTRS:
+                # FIX: json.load/loads es seguro — excluir de conteo
+                if attr in {"load", "loads"} and module_name == "json":
+                    pass  # json.load() no ejecuta código arbitrario
+                else:
+                    # Alias de módulo: o.system(), obj.loads(), h.md5(), etc.
+                    self.dangerous_func_count += 1
+                    logger.debug(f"   \U0001f6a8 Función peligrosa (alias) detectada: .{attr}()")
+            elif attr == "format":
                 self.has_string_concat = 1
+
+        self.generic_visit(node)
+
+    def visit_Assign(self, node: ast.Assign):
+        """
+        Detecta secretos hardcodeados (Cat. 5).
+        Busca asignaciones a variables con nombres como SECRET, API_KEY,
+        PASSWORD, TOKEN con valores de string literal no vacíos.
+        """
+        for target in node.targets:
+            var_name = ""
+            if isinstance(target, ast.Name):
+                var_name = target.id
+            elif isinstance(target, ast.Attribute):
+                var_name = target.attr
+
+            if var_name and _SECRET_NAME_PATTERNS.search(var_name):
+                value_node = node.value
+                if isinstance(value_node, ast.Constant) and isinstance(value_node.value, str):
+                    secret_val = value_node.value.strip()
+                    placeholders = {"", "your_key", "your_secret", "your_password",
+                                    "changeme", "placeholder", "xxxxx", "...",
+                                    "none", "null", "todo", "fixme"}
+                    if secret_val.lower() not in placeholders and len(secret_val) >= 4:
+                        self.has_hardcoded_secret = 1
+                        self.dangerous_func_count += 1
+                        lineno = getattr(node, "lineno", "?")
+                        logger.debug(f"   🚨 Secreto hardcodeado detectado: {var_name} (línea ~{lineno})")
 
         self.generic_visit(node)
 
@@ -901,6 +1041,7 @@ class ASTFeatureExtractor(ast.NodeVisitor):
             "num_imports":            self.num_imports,
             "has_string_concat":      self.has_string_concat,
             "num_exception_handlers": self.num_exception_handlers,
+            "has_hardcoded_secret":   self.has_hardcoded_secret,
         }
 
 

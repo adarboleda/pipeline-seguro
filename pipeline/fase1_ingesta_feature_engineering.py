@@ -869,6 +869,11 @@ class ASTFeatureExtractor(ast.NodeVisitor):
             if node.func.id in self._SIMPLE_DANGEROUS:
                 self.dangerous_func_count += 1
                 logger.debug(f"   🚨 Función peligrosa detectada: {node.func.id}()")
+            elif node.func.id == "open":
+                # Cat. 4 — Path Traversal (ruta dinámica)
+                if node.args and not isinstance(node.args[0], ast.Constant):
+                    self.dangerous_func_count += 1
+                    logger.debug(f"   🚨 Path Traversal potencial: open() con argumento dinámico")
 
         elif isinstance(node.func, ast.Attribute):
             attr = node.func.attr
@@ -972,6 +977,14 @@ class ASTFeatureExtractor(ast.NodeVisitor):
     def visit_BinOp(self, node: ast.BinOp):
         if isinstance(node.op, (ast.Add, ast.Mod)):
             self.has_string_concat = 1
+            # Cat. 6 — XSS (concatenación con HTML)
+            html_tags = {"<html", "<body", "<script", "<div", "<h1", "<p"}
+            for child in (node.left, node.right):
+                if isinstance(child, ast.Constant) and isinstance(child.value, str):
+                    if any(tag in child.value.lower() for tag in html_tags):
+                        self.dangerous_func_count += 1
+                        logger.debug("   🚨 XSS potencial: concatenación de strings con etiquetas HTML")
+                        break
         self.generic_visit(node)
 
     def visit_JoinedStr(self, node: ast.JoinedStr):

@@ -500,7 +500,6 @@ def parse_diff(diff_path: str):
         for line in f:
             if line.startswith("+++ b/"):
                 current_file = line[6:].strip()
-                modified_files.add(current_file)
             elif line.startswith("@@"):
                 parts = line.split(" ")
                 if len(parts) >= 3 and parts[2].startswith("+"):
@@ -513,10 +512,12 @@ def parse_diff(diff_path: str):
                 continue
             elif line.startswith("+"):
                 code_line = line[1:]
-                added_lines.append(code_line)
-                if current_file not in file_lines_added:
-                    file_lines_added[current_file] = []
-                file_lines_added[current_file].append((current_line, code_line))
+                if current_file.endswith(".py"):
+                    modified_files.add(current_file)
+                    added_lines.append(code_line)
+                    if current_file not in file_lines_added:
+                        file_lines_added[current_file] = []
+                    file_lines_added[current_file].append((current_line, code_line))
                 current_line += 1
             elif line.startswith(" "):
                 current_line += 1

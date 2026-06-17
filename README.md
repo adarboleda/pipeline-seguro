@@ -43,15 +43,15 @@ El sistema aplica el principio **Shift-Left Security**: la revisión de segurida
 
 ### ✨ Características Principales
 
-| Característica         | Detalle                                                      |
-| ---------------------- | ------------------------------------------------------------ |
+| Característica         | Detalle                                                     |
+| ---------------------- | ----------------------------------------------------------- |
 | **Análisis de Código** | Random Forest + TF-IDF + 7 Features AST                     |
-| **Dataset**            | CVEFixes (código vulnerable/seguro real)                     |
-| **Accuracy**           | 96.43% en validación cruzada de 10 pliegues                  |
-| **Backend**            | FastAPI dockerizado en Render                                |
-| **Notificaciones**     | Bot de Telegram en tiempo real                               |
-| **Trigger**            | Pull Request automático `dev → test`                         |
-| **Scope del análisis** | Solo archivos `.py` — documentación y configs son ignoradas  |
+| **Dataset**            | CVEFixes (código vulnerable/seguro real)                    |
+| **Accuracy**           | 96.43% en validación cruzada de 10 pliegues                 |
+| **Backend**            | FastAPI dockerizado en Render                               |
+| **Notificaciones**     | Bot de Telegram en tiempo real                              |
+| **Trigger**            | Pull Request automático `dev → test`                        |
+| **Scope del análisis** | Solo archivos `.py` — documentación y configs son ignoradas |
 
 ---
 
@@ -203,15 +203,15 @@ deploy-production:
 
 El `ASTFeatureExtractor` recorre el Árbol de Sintaxis Abstracta de cada fragmento y extrae **7 features numéricas**:
 
-| Feature                  | Descripción                                                               | Categoría   |
-| ------------------------ | ------------------------------------------------------------------------- | ----------- |
-| `ast_depth`              | Profundidad máxima del AST (complejidad estructural)                      | General     |
-| `dangerous_func_count`   | Invocaciones a `eval`, `exec`, `subprocess.Popen`, `os.system`, etc.     | Cat. 2–6    |
-| `total_calls`            | Total de llamadas a funciones en el fragmento                             | General     |
-| `num_imports`            | Número de sentencias `import`                                             | General     |
-| `has_string_concat`      | Flag binario: ¿hay concatenación de strings? (riesgo SQL injection / XSS) | Cat. 1, 6   |
-| `num_exception_handlers` | Bloques `except` (supresión silenciosa de errores)                        | General     |
-| `has_hardcoded_secret`   | Flag binario: ¿hay credencial/secreto con valor literal en el código?     | Cat. 5      |
+| Feature                  | Descripción                                                               | Categoría |
+| ------------------------ | ------------------------------------------------------------------------- | --------- |
+| `ast_depth`              | Profundidad máxima del AST (complejidad estructural)                      | General   |
+| `dangerous_func_count`   | Invocaciones a `eval`, `exec`, `subprocess.Popen`, `os.system`, etc.      | Cat. 2–6  |
+| `total_calls`            | Total de llamadas a funciones en el fragmento                             | General   |
+| `num_imports`            | Número de sentencias `import`                                             | General   |
+| `has_string_concat`      | Flag binario: ¿hay concatenación de strings? (riesgo SQL injection / XSS) | Cat. 1, 6 |
+| `num_exception_handlers` | Bloques `except` (supresión silenciosa de errores)                        | General   |
+| `has_hardcoded_secret`   | Flag binario: ¿hay credencial/secreto con valor literal en el código?     | Cat. 5    |
 
 ### Pipeline de Preprocesamiento
 
@@ -280,22 +280,22 @@ Cuando el pipeline le envía el archivo con los cambios del PR (`cambios.diff`),
 
 ### 🔬 Categorías de Vulnerabilidades Detectadas
 
-| Categoría | Descripción                               | Método de Detección         |
-| --------- | ----------------------------------------- | --------------------------- |
-| **Cat. 1** | SQL Injection (string concat + SQL keywords) | AST + Heurística         |
-| **Cat. 2** | Command Injection (`eval`, `exec`, `os.system`, `subprocess` con `shell=True`) | AST + Heurística |
-| **Cat. 3** | Deserialización Insegura (`pickle.loads`, `yaml.load` sin SafeLoader) | AST + Heurística |
-| **Cat. 4** | Path Traversal (`open(concat)`, `open(f-string)`) | AST especializado |
-| **Cat. 5** | Secretos Hardcodeados + Criptografía Débil (`hashlib.md5`, `hashlib.sha1`) | AST + Heurística |
-| **Cat. 6** | XSS (concat HTML) + SSRF (HTTP con URL dinámica) | AST + Heurística |
+| Categoría  | Descripción                                                                    | Método de Detección |
+| ---------- | ------------------------------------------------------------------------------ | ------------------- |
+| **Cat. 1** | SQL Injection (string concat + SQL keywords)                                   | AST + Heurística    |
+| **Cat. 2** | Command Injection (`eval`, `exec`, `os.system`, `subprocess` con `shell=True`) | AST + Heurística    |
+| **Cat. 3** | Deserialización Insegura (`pickle.loads`, `yaml.load` sin SafeLoader)          | AST + Heurística    |
+| **Cat. 4** | Path Traversal (`open(concat)`, `open(f-string)`)                              | AST especializado   |
+| **Cat. 5** | Secretos Hardcodeados + Criptografía Débil (`hashlib.md5`, `hashlib.sha1`)     | AST + Heurística    |
+| **Cat. 6** | XSS (concat HTML) + SSRF (HTTP con URL dinámica)                               | AST + Heurística    |
 
 ### 🎨 Indicadores de Severidad en el Reporte
 
-| Icono | Significado                                                        |
-| ----- | ------------------------------------------------------------------ |
+| Icono | Significado                                                         |
+| ----- | ------------------------------------------------------------------- |
 | 🔴    | Vulnerabilidad confirmada por análisis AST directo (alta confianza) |
-| 🟠    | Patrón detectado por heurística de texto o señal del modelo ML     |
-| 🟡    | Concatenación de strings sospechosa (posible SQLi/XSS)            |
+| 🟠    | Patrón detectado por heurística de texto o señal del modelo ML      |
+| 🟡    | Concatenación de strings sospechosa (posible SQLi/XSS)              |
 
 ---
 
@@ -317,14 +317,15 @@ print(f"Accuracy promedio: {scores.mean():.4f} ± {scores.std():.4f}")
 
 | Métrica                       | Valor                               |
 | ----------------------------- | ----------------------------------- |
-| **Cross-Validation Accuracy** | **96.43%** ✅                        |
-| **Test Accuracy**             | **95.62%** ✅                        |
+| **Cross-Validation Accuracy** | **96.43%** ✅                       |
+| **Test Accuracy**             | **95.62%** ✅                       |
 | Número de pliegues            | 10                                  |
 | Estrategia                    | StratifiedKFold (balance de clases) |
 | Random State                  | 42 (reproducible)                   |
 
 > 📸 **CAPTURA REQUERIDA:**
 > Tomar screenshot de la celda de validación cruzada en el notebook (VS Code o Jupyter), mostrando la salida con los 10 scores y el accuracy promedio. Debe verse algo similar a:
+>
 > ```
 > Fold 01: 0.9665
 > Fold 02: 0.9638
@@ -333,6 +334,7 @@ print(f"Accuracy promedio: {scores.mean():.4f} ± {scores.std():.4f}")
 > ─────────────────────
 > CV Accuracy: 0.9643 ± 0.0031
 > ```
+>
 > Insertar la imagen aquí: `![Validación Cruzada](./pipeline/cv_results.png)`
 
 Las gráficas generadas durante el entrenamiento están disponibles en la carpeta `pipeline/`:
@@ -361,7 +363,7 @@ Durante las iteraciones de fortalecimiento del pipeline, se implementaron mejora
    - El parser del diff (`parse_diff`) ahora **solo extrae y analiza líneas de archivos `.py`**. Cambios en `README.md`, `.yml`, `.json`, Dockerfiles u otros archivos que no sean código Python fuente son descartados silenciosamente antes de cualquier análisis. Esto resuelve el problema de falsos positivos donde editar documentación que menciona vulnerabilidades (como `subprocess`, `requests.get`, etc.) disparaba bloqueos incorrectos en el pipeline.
 
 2. **Alineación de Capas (Cat 1-6 determinista):**
-   - Anteriormente, vulnerabilidades como *Secretos Hardcodeados* (Cat 5) o *SSRF/XSS* (Cat 6) dependían únicamente de la probabilidad estimada del modelo de ML para el bloqueo. Ahora, las detecciones directas a nivel de AST actúan como **bloqueadores deterministas inmediatos**, garantizando que ningún patrón inseguro pase desapercibido independientemente del puntaje del modelo.
+   - Anteriormente, vulnerabilidades como _Secretos Hardcodeados_ (Cat 5) o _SSRF/XSS_ (Cat 6) dependían únicamente de la probabilidad estimada del modelo de ML para el bloqueo. Ahora, las detecciones directas a nivel de AST actúan como **bloqueadores deterministas inmediatos**, garantizando que ningún patrón inseguro pase desapercibido independientemente del puntaje del modelo.
 
 3. **Mitigación de Falsos Positivos en Operaciones Seguras:**
    - **Inyección de Comandos (Cat 2):** El análisis de AST verifica si `subprocess.run/call/Popen` utiliza `shell=True`. Si es `shell=False` (o no está especificado) y los argumentos se pasan como lista de strings, se clasifica automáticamente como seguro y no se contabiliza.
@@ -430,7 +432,7 @@ seaborn>=0.12.0
 
 ### 3. Colocar el Dataset CVEFixes
 
-Descarga el dataset `CVEFixes.csv` y colócalo en la raíz del repositorio:
+Descarga el dataset `CVEFixes.csv` de [kaggle - CVEFixes.csv](https://www.kaggle.com/datasets/girish17019/cvefixes-vulnerable-and-fixed-code) y colócalo en la raíz del repositorio:
 
 ```
 ProyectoU2/
@@ -439,8 +441,6 @@ ProyectoU2/
 │   └── fase1_ingesta_feature_engineering.py
 └── ...
 ```
-
-> El CSV comprimido (`CVEFixes.csv.zip`) también está disponible en el repositorio. Descomprímelo antes de ejecutar el script.
 
 ---
 
@@ -705,30 +705,7 @@ ProyectoU2/
 
 ---
 
-## ✅ Rúbrica y Validación de Requisitos
-
-| #   | Requisito                                             | Estado                                                                  |
-| --- | ----------------------------------------------------- | ----------------------------------------------------------------------- |
-| 1   | Ramas obligatorias (`dev`, `test`, `main`)            | ✅ Cumplido                                                             |
-| 2   | Trigger de PR (`dev → test`)                          | ✅ Cumplido                                                             |
-| 3   | Modelo de Minería de Datos (sin LLMs)                 | ✅ Random Forest + AST (7 features)                                     |
-| 4   | PR bloqueado si código es vulnerable                  | ✅ `exit(1)` + PR cerrado                                               |
-| 5   | Comentario detallado en PR rechazado                  | ✅ `gh pr comment --body-file reporte_seguridad.txt`                    |
-| 6   | Issue automático + Label (`fixing-required`)          | ✅ `gh issue create`                                                    |
-| 7   | Merge automático a `test` + Pytest                    | ✅ `gh pr merge --admin`                                                |
-| 8   | Merge a `main` + Deploy en Render                     | ✅ Webhook HTTPS                                                        |
-| 9   | Notificaciones Telegram completas (todos los eventos) | ✅ 8 eventos cubiertos                                                  |
-| 10  | Accuracy > 96.4% demostrada                           | ✅ Cross-Validation 10-fold                                             |
-| 11  | Modelo entrenado con dataset público                  | ✅ CVEFixes                                                             |
-| 12  | Features de AST (`eval`, `subprocess`, etc.)          | ✅ `ASTFeatureExtractor` (7 features, Cat. 1–6)                         |
-| 13  | Exportado en `.joblib`                                | ✅ `pipeline/models/`                                                   |
-| 14  | Backend desplegado en producción                      | ✅ [pipeline-seguro.onrender.com](https://pipeline-seguro.onrender.com) |
-| 15  | Dockerfile seguro (non-root, slim)                    | ✅ `appuser`, `python:3.10-slim`                                        |
-| 16  | Sin falsos positivos en archivos de documentación     | ✅ Filtro `.py` exclusivo en `parse_diff()`                             |
-
 <div align="center">
-
-**🛡️ Construido con principios de Secure DevOps y Shift-Left Security**
 
 [🌐 Ver Aplicación en Producción](https://pipeline-seguro.onrender.com) · [📊 Ver Pipeline en GitHub Actions](../../actions) · [📋 Ver Informe Técnico](./informe_proyecto.md)
 

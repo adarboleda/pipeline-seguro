@@ -136,6 +136,13 @@ class ASTFeatureExtractor(ast.NodeVisitor):
                 detail = f"{func_name}() (línea ~{lineno})"
                 self.found_dangerous_details.append(detail)
                 self._classify_simple(func_name, lineno)
+            elif func_name == "open":
+                # Cat. 4 — Path Traversal (ruta dinámica)
+                if node.args and not isinstance(node.args[0], ast.Constant):
+                    self.dangerous_func_count += 1
+                    lineno = getattr(node, "lineno", "?")
+                    detail = f"open() con ruta dinámica (línea ~{lineno})"
+                    self.found_dangerous_details.append(detail)
 
         elif isinstance(node.func, ast.Attribute):
             attr = node.func.attr
@@ -315,6 +322,17 @@ class ASTFeatureExtractor(ast.NodeVisitor):
     def visit_BinOp(self, node: ast.BinOp):
         if isinstance(node.op, (ast.Add, ast.Mod)):
             self.has_string_concat = 1
+            # Cat. 6 — XSS (concatenación con HTML)
+            lineno = getattr(node, "lineno", "?")
+            html_tags = {"<html", "<body", "<script", "<div", "<h1", "<p"}
+            for child in (node.left, node.right):
+                if isinstance(child, ast.Constant) and isinstance(child.value, str):
+                    if any(tag in child.value.lower() for tag in html_tags):
+                        self.dangerous_func_count += 1
+                        cat = f"Cat.6 — XSS Potencial: Concatenación de HTML (línea ~{lineno})"
+                        if cat not in self.vulnerability_categories:
+                            self.vulnerability_categories.append(cat)
+                        break
         self.generic_visit(node)
 
     def visit_JoinedStr(self, node: ast.JoinedStr):
@@ -609,14 +627,11 @@ def main():
     #   el diff modifica scripts de seguridad que discuten vulnerabilidades).
     # ══════════════════════════════════════════════════════════════════════
 
+    # El bloqueo requiere que el ML o un hallazgo crítico del AST real lo confirmen
     has_ml_signal = (prediction == 1 or vuln_prob >= 50.0)
     
-    # Separamos categorías críticas de no críticas para evitar que falsos positivos en 
-    # SSRF (requests.get) o Criptografía/Secretos bloqueen código estadísticamente seguro por sí solos.
-    critical_ast_categories = [
-        cat for cat in ast_vuln_categories 
-        if any(prefix in cat for prefix in ["Cat.2", "Cat.3"])
-    ]
+    # Todas las categorías detectadas directamente por el AST se consideran señales fuertes de bloqueo
+    critical_ast_categories = ast_vuln_categories
     
     has_ast_signal = (
         len(critical_ast_categories) > 0 or

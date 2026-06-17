@@ -166,6 +166,16 @@ class ASTFeatureExtractor(ast.NodeVisitor):
                     if not shell_is_true:
                         self.generic_visit(node)
                         return  # shell=False o no especificado → seguro, ignorar
+                elif module_name in {"requests", "httpx", "urllib", "urllib2"} and attr in {"get", "post", "put", "delete", "request", "urlopen"}:
+                    url_arg = None
+                    if node.args:
+                        url_arg = node.args[0]
+                    else:
+                        url_arg = next((kw.value for kw in node.keywords if kw.arg == "url"), None)
+                    if url_arg and isinstance(url_arg, ast.Constant):
+                        self.generic_visit(node)
+                        return  # URL estática → segura, ignorar
+
                 self.dangerous_func_count += 1
                 detail = f"{module_name}.{attr}() (línea ~{lineno})"
                 self.found_dangerous_details.append(detail)
@@ -560,6 +570,7 @@ def main():
         ast_features_dict["num_imports"],
         ast_features_dict["has_string_concat"],
         ast_features_dict["num_exception_handlers"],
+        ast_features_dict["has_hardcoded_secret"],
     ]])
 
     # 5. Concatenación Final (TF-IDF primero, AST después)
@@ -599,13 +610,21 @@ def main():
     # ══════════════════════════════════════════════════════════════════════
 
     has_ml_signal = (prediction == 1 or vuln_prob >= 50.0)
+    
+    # Separamos categorías críticas de no críticas para evitar que falsos positivos en 
+    # SSRF (requests.get) o Criptografía/Secretos bloqueen código estadísticamente seguro por sí solos.
+    critical_ast_categories = [
+        cat for cat in ast_vuln_categories 
+        if any(prefix in cat for prefix in ["Cat.2", "Cat.3"])
+    ]
+    
     has_ast_signal = (
-        ast_features_dict["dangerous_func_count"] > 0 or
+        len(critical_ast_categories) > 0 or
         len(path_traversal_findings) > 0
     )
     has_heuristic_signal = len(heuristic_categories) > 0  # Solo para el reporte
 
-    # El bloqueo requiere que el ML o el AST real lo confirmen
+    # El bloqueo requiere que el ML o un hallazgo crítico del AST real lo confirmen
     is_vulnerable = has_ml_signal or has_ast_signal
 
     report_file = "reporte_seguridad.txt"

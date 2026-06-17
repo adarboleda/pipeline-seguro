@@ -904,17 +904,28 @@ class ASTFeatureExtractor(ast.NodeVisitor):
                         self.dangerous_func_count += 1
                         logger.debug(f"   \U0001f6a8 subprocess.{attr}(shell=True) detectado")
                     # else: shell=False o no especificado → seguro, no se cuenta
+                elif module_name in {"requests", "httpx", "urllib", "urllib2"} and attr in {"get", "post", "put", "delete", "request", "urlopen"}:
+                    url_arg = None
+                    if node.args:
+                        url_arg = node.args[0]
+                    else:
+                        url_arg = next((kw.value for kw in node.keywords if kw.arg == "url"), None)
+                    if url_arg and isinstance(url_arg, ast.Constant):
+                        pass  # URL estática → segura, no se cuenta
+                    else:
+                        self.dangerous_func_count += 1
+                        logger.debug(f"   \U0001f6a8 SSRF potencial detectado: {module_name}.{attr}() con URL variable")
                 else:
                     self.dangerous_func_count += 1
-                    logger.debug(f"   \U0001f6a8 Funci\u00f3n peligrosa detectada: {module_name}.{attr}()")
+                    logger.debug(f"   \U0001f6a8 Función peligrosa detectada: {module_name}.{attr}()")
             elif attr in self._DANGEROUS_ATTRS:
                 # FIX: json.load/loads es seguro — excluir de conteo
                 if attr in {"load", "loads"} and module_name == "json":
-                    pass  # json.load() no ejecuta c\u00f3digo arbitrario
+                    pass  # json.load() no ejecuta código arbitrario
                 else:
-                    # Alias de m\u00f3dulo: o.system(), obj.loads(), h.md5(), etc.
+                    # Alias de módulo: o.system(), obj.loads(), h.md5(), etc.
                     self.dangerous_func_count += 1
-                    logger.debug(f"   \U0001f6a8 Funci\u00f3n peligrosa (alias) detectada: .{attr}()")
+                    logger.debug(f"   \U0001f6a8 Función peligrosa (alias) detectada: .{attr}()")
             elif attr == "format":
                 self.has_string_concat = 1
 

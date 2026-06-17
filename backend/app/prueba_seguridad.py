@@ -6,6 +6,10 @@ import hashlib
 import sqlite3
 import requests
 
-def deserializacion_insegura_yaml(data_yaml_usuario):
-
-    return yaml.load(data_yaml_usuario)
+def path_traversal_open(filename: str):
+    """
+    Permite lectura arbitraria de archivos del sistema al concatenar '../'
+    """
+    ruta = "uploads/" + filename
+    with open(ruta, "r") as archivo:
+        return archivo.read()

@@ -7,7 +7,6 @@ import sqlite3
 import requests
 
 
-# Secreto hardcodeado en el código fuente (Fuga de credenciales)
 LLAVE_API_SUPER_SECRETA = "AIzaSyD-1234567890-ABCDE-FGHIJ"
 
 def hash_password_sha1(contrasena: str) -> str:

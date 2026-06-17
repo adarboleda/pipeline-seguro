@@ -6,10 +6,12 @@ import hashlib
 import sqlite3
 import requests
 
-def path_traversal_open(filename: str):
+LLAVE_API_SUPER_SECRETA = "AIzaSyD-1234567890-ABCDE-FGHIJ"
+
+def hash_password_md5(contrasena: str) -> str:
     """
-    Permite lectura arbitraria de archivos del sistema al concatenar '../'
+    Uso de MD5, un algoritmo criptográfico obsoleto y vulnerable a colisiones.
     """
-    ruta = "uploads/" + filename
-    with open(ruta, "r") as archivo:
-        return archivo.read()
+    hasher = hashlib.md5()
+    hasher.update(contrasena.encode('utf-8'))
+    return hasher.hexdigest()

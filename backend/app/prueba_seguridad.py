@@ -7,6 +7,8 @@ import sqlite3
 import requests
 
 
-def xss_manually_formatted_html(nombre_usuario: str) -> str:
-
-    return "<html><body><h1>Bienvenido " + nombre_usuario + "</h1></body></html>"
+def ssrf_untrusted_request(url_usuario: str):
+    """
+    SSRF: Peticiones HTTP a URLs provistas por el usuario sin sanitizar.
+    """
+    return requests.get(url_usuario)

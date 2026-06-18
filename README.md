@@ -323,19 +323,8 @@ print(f"Accuracy promedio: {scores.mean():.4f} ± {scores.std():.4f}")
 | Estrategia                    | StratifiedKFold (balance de clases) |
 | Random State                  | 42 (reproducible)                   |
 
-> 📸 **CAPTURA REQUERIDA:**
-> Tomar screenshot de la celda de validación cruzada en el notebook (VS Code o Jupyter), mostrando la salida con los 10 scores y el accuracy promedio. Debe verse algo similar a:
->
-> ```
-> Fold 01: 0.9665
-> Fold 02: 0.9638
-> ...
-> Fold 10: 0.9645
-> ─────────────────────
-> CV Accuracy: 0.9643 ± 0.0031
-> ```
->
-> Insertar la imagen aquí: `![Validación Cruzada](./pipeline/cv_results.png)`
+> Screenshot de la celda de validación cruzada en el notebook, mostrando la salida con los 10 scores y el accuracy promedio.
+> ![Validación Cruzada](./pipeline/cv_results.png)
 
 Las gráficas generadas durante el entrenamiento están disponibles en la carpeta `pipeline/`:
 
@@ -345,13 +334,11 @@ Las gráficas generadas durante el entrenamiento están disponibles en la carpet
 | [`evaluacion_modelo.png`](./pipeline/evaluacion_modelo.png)     | Matriz de confusión y métricas del modelo              |
 | [`feature_importance.png`](./pipeline/feature_importance.png)   | Importancia de features del Random Forest              |
 
-> 📸 **CAPTURA REQUERIDA:**
-> Insertar screenshot de `evaluacion_modelo.png` mostrando la matriz de confusión y el reporte de clasificación (precision, recall, f1-score).
-> `![Evaluación del Modelo](./pipeline/evaluacion_modelo.png)`
+> Screenshot de `evaluacion_modelo.png` mostrando la matriz de confusión y el reporte de clasificación (precision, recall, f1-score).
+> ![Evaluación del Modelo](./pipeline/evaluacion_modelo.png)
 
-> 📸 **CAPTURA REQUERIDA:**
-> Insertar screenshot de `feature_importance.png` mostrando cuáles features del AST y TF-IDF son más importantes para el clasificador.
-> `![Feature Importance](./pipeline/feature_importance.png)`
+> Screenshot de `feature_importance.png` mostrando cuáles features del AST y TF-IDF son más importantes para el clasificador.
+> ![Feature Importance](./pipeline/feature_importance.png)
 
 ---
 
@@ -547,9 +534,8 @@ pip install jupytext
 jupytext --to notebook pipeline/fase1_ingesta_feature_engineering.py
 ```
 
-> 📸 **CAPTURA REQUERIDA:**
-> Screenshot del notebook abierto en Jupyter/VS Code mostrando las celdas de entrenamiento en ejecución, idealmente la celda de validación cruzada con los resultados visibles en el output.
-> Insertar imagen aquí: `![Notebook de Entrenamiento](./pipeline/notebook_training.png)`
+> Screenshot del notebook abierto mostrando las celdas de entrenamiento en ejecución.
+> ![Notebook de Entrenamiento](./pipeline/notebook_training.png)
 
 ---
 
@@ -577,13 +563,17 @@ El pipeline envía notificaciones automáticas a Telegram en **cada etapa críti
 3. Copia el **TOKEN** generado → guardarlo como `TELEGRAM_TOKEN` en GitHub Secrets
 4. Obtén tu **Chat ID** hablando con [@userinfobot](https://t.me/userinfobot) → guardarlo como `TELEGRAM_CHAT_ID`
 
-> 📸 **CAPTURA REQUERIDA:**
 > Screenshot del chat de Telegram mostrando notificaciones reales del pipeline en ejecución: inicio de revisión, resultado de seguridad (aprobado o alerta), y despliegue exitoso.
-> Insertar imagen aquí: `![Notificaciones Telegram](./pipeline/telegram_notifications.png)`
+>
+> <p align="center">
+>   <img src="./pipeline/telegram_notifications.png" alt="Notificaciones Telegram" width="250">
+> </p>
 
-> 📸 **CAPTURA REQUERIDA:**
 > Screenshot adicional mostrando la notificación `🚨 ALERTA CRÍTICA` cuando el Gatekeeper detecta código vulnerable y bloquea el PR (con el detalle de categoría de vulnerabilidad).
-> Insertar imagen aquí: `![Alerta Crítica Telegram](./pipeline/telegram_alert.png)`
+>
+> <p align="center">
+>   <img src="./pipeline/telegram_alert.png" alt="Alerta Crítica Telegram" width="250">
+> </p>
 
 ---
 
@@ -641,13 +631,11 @@ CMD uvicorn main:app --host 0.0.0.0 --port $PORT
 | Info Leakage         | Mensajes de error genéricos (no revelan detalles internos) |
 | Denial of Wallet     | Límite de 10 asientos por reserva                          |
 
-> 📸 **CAPTURA REQUERIDA:**
 > Screenshot de la app funcionando en `https://pipeline-seguro.onrender.com/docs` mostrando la interfaz Swagger UI con los endpoints (`GET /eventos` y `POST /reservas`).
-> Insertar imagen aquí: `![Swagger UI en Producción](./pipeline/swagger_prod.png)`
+> ![Swagger UI en Producción](./pipeline/swagger_prod.png)
 
-> 📸 **CAPTURA REQUERIDA:**
-> Screenshot del dashboard de Render mostrando el servicio `pipeline-seguro` activo (status: Live/Running) e historial de despliegues automáticos activados por el webhook.
-> Insertar imagen aquí: `![Dashboard de Render](./pipeline/render_dashboard.png)`
+> Screenshot del dashboard de Render mostrando el servicio `pipeline-seguro` activo e historial de despliegues automáticos activados por el webhook.
+> ![Dashboard de Render](./pipeline/render_dashboard.png)
 
 ---
 

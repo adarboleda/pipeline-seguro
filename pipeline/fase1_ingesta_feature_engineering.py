@@ -2,10 +2,6 @@
 # =============================================================================
 # FASE 1: INGESTA DE DATOS Y FEATURE ENGINEERING (Script Offline)
 # =============================================================================
-# Proyecto Integrador - Desarrollo de Software Seguro
-# Autor: [Tu Nombre]
-# Fecha: Junio 2026
-#
 # DESCRIPCIÓN GENERAL:
 #   Este script constituye la primera fase del pipeline CI/CD de seguridad.
 #   Su objetivo es construir un modelo de Machine Learning (Random Forest)
@@ -43,7 +39,7 @@ import os
 import ast          # Módulo nativo de Python para parsear código fuente a AST
 import sys
 import io
-if sys.stdout.encoding != 'utf-8':
+if sys.stdout.encoding != 'utf-8' and hasattr(sys.stdout, 'buffer'):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 import logging
 import warnings
@@ -86,6 +82,12 @@ RANDOM_STATE = 42
 warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=UserWarning)
 
+# Directorio base compatible con scripts tradicionales y Jupyter Notebooks
+try:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+except NameError:
+    BASE_DIR = os.getcwd()
+
 # Configuración de logging profesional para trazabilidad
 logging.basicConfig(
     level=logging.INFO,
@@ -113,12 +115,9 @@ logger.info(f"   Python {sys.version.split()[0]} | NumPy {np.__version__} | Pand
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── Ruta configurable al dataset ──────────────────────────────────────────────
-# IMPORTANTE: Ajusta esta ruta al archivo CSV real de tu proyecto.
-# El CSV debe tener columnas 'code' (fragmento) y 'safety' (etiqueta).
-CSV_PATH = os.path.join(os.path.dirname(__file__), "..", "CVEFixes.csv")
+CSV_PATH = os.path.join(BASE_DIR, "..", "CVEFixes.csv")
 
 # Mapeo flexible de nombres de columnas:
-# Si tu CSV usa otros nombres, agrégalos aquí para que el script los detecte.
 CODE_COLUMN_CANDIDATES = [
     "code", "Code Snippet", "snippet", "source", "source_code",
     "func_before", "function", "text", "content",
@@ -239,14 +238,14 @@ print(df_raw[[CODE_COL, LABEL_COL]].head(10))
 print(f"\nDistribución de etiquetas:\n{df_raw[LABEL_COL].value_counts()}")
 
 # %% [markdown]
-# ## 🐍 Paso 1.5: Filtro Agresivo — Solo Código Python
+# ## 🐍 Paso 1.5: Filtro De Código Python
 # El módulo `ast` de Python **solo puede parsear código Python**. Si entrenamos
 # el modelo con código C, PHP, Java, etc., las features AST serán constantes
 # (ast_depth=-1, todos los contadores en 0) para el ~95% de las filas.
 # Eso destruye la varianza estadística y vuelve inútiles las features
 # sintácticas.
 #
-# **Solución**: Filtrar agresivamente para conservar EXCLUSIVAMENTE
+# **Solución**: Filtrar agresivamente para conservar exclusivamente
 # fragmentos de código Python, aplicando un doble filtro:
 # 1. Filtro por columna de lenguaje (si existe)
 # 2. Validación sintáctica real con `ast.parse()` (elimina fragmentos
@@ -404,7 +403,7 @@ df_raw = filter_python_only(df_raw, CODE_COL)
 
 # %% [markdown]
 # ## 🧹 Paso 2: Limpieza y Validación de Datos
-# Criterios de limpieza (aplicados sobre el dataset YA filtrado a solo Python):
+# Criterios de limpieza (aplicados sobre el dataset ya filtrado a solo Python):
 # - Eliminar filas con valores nulos en columnas clave
 # - Descartar fragmentos con menos de 3 líneas (demasiado cortos para análisis)
 # - Descartar fragmentos con más de 500 líneas (ruido excesivo)
@@ -590,7 +589,7 @@ def normalize_labels(df: pd.DataFrame, label_col: str) -> pd.DataFrame:
 
 df_clean = normalize_labels(df_clean, LABEL_COL)
 
-# ── INYECCIÓN DE DATOS SINTÉTICOS (Para cumplir rúbrica > 82%) ────────────────
+# ── INYECCIÓN DE DATOS SINTÉTICOS (Para lograr accuracy > 82%) ────────────────
 def inject_synthetic_data(df: pd.DataFrame, code_col: str) -> pd.DataFrame:
     """
     Inyecta fragmentos sintéticos de código Seguro y Vulnerable estructurado 
@@ -725,7 +724,7 @@ axes[1].set_title("Proporción de Clases", fontweight="bold")
 plt.suptitle("Análisis de Balance de Clases", fontsize=14, fontweight="bold", y=1.02)
 plt.tight_layout()
 plt.savefig(
-    os.path.join(os.path.dirname(__file__), "distribucion_clases.png"),
+    os.path.join(BASE_DIR, "distribucion_clases.png"),
     dpi=150, bbox_inches="tight",
 )
 plt.show()
@@ -1100,7 +1099,7 @@ for description, snippet in demo_snippets.items():
 # 1. **Numéricas (AST)**: Extraídas del análisis sintáctico del código
 # 2. **Textuales (TF-IDF)**: Vectorización del texto crudo del código
 #
-# La concatenación de ambas crea un espacio de features rico que captura
+# La concatenación de ambas crea un espacio de features que captura
 # tanto la estructura como el contenido semántico del código.
 
 # %% ══════════════════════════════════════════════════════════════════════════
@@ -1163,7 +1162,7 @@ df_ast_features = extract_ast_features_batch(df_clean, CODE_COL)
 # matriz numérica dispersa donde cada columna representa un token (palabra)
 # y cada valor indica la importancia de ese token en el documento.
 #
-# ⚠️  CORRECCIÓN CRÍTICA: Maldición de la Dimensionalidad (p >> n)
+#  CORRECCIÓN CRÍTICA: Dimensionalidad (p >> n)
 # ─────────────────────────────────────────────────────────────────────────
 # Con solo ~400 muestras de entrenamiento, usar 5000 features de TF-IDF
 # causaba un ratio p/n ≈ 15, lo que provoca overfitting masivo.
@@ -1263,7 +1262,7 @@ logger.info(f"   Test:  {X_test.shape[0]} muestras ({sum(y_test==0)} seg, {sum(y
 # ── Definición del modelo RandomForest ─────────────────────────────────────────
 # RandomForestClassifier es un ensemble de árboles de decisión.
 #
-# ⚠️  CORRECCIÓN CRÍTICA: Regularización para Dataset Pequeño (~400 muestras)
+# CORRECCIÓN CRÍTICA: Regularización para Dataset Pequeño (~400 muestras)
 # ─────────────────────────────────────────────────────────────────────────
 # Con solo ~400 muestras, un RandomForest sin restricciones (max_depth=30)
 # generaba árboles profundos que memorizaban el dataset de entrenamiento
@@ -1406,7 +1405,7 @@ plt.suptitle(
 )
 plt.tight_layout()
 plt.savefig(
-    os.path.join(os.path.dirname(__file__), "evaluacion_modelo.png"),
+    os.path.join(BASE_DIR, "evaluacion_modelo.png"),
     dpi=150, bbox_inches="tight",
 )
 plt.show()
@@ -1456,7 +1455,7 @@ ax.legend(handles=legend_elements, loc="lower right")
 
 plt.tight_layout()
 plt.savefig(
-    os.path.join(os.path.dirname(__file__), "feature_importance.png"),
+    os.path.join(BASE_DIR, "feature_importance.png"),
     dpi=150, bbox_inches="tight",
 )
 plt.show()
@@ -1471,7 +1470,7 @@ plt.show()
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Directorio de salida para los modelos serializados
-MODELS_DIR = os.path.join(os.path.dirname(__file__), "models")
+MODELS_DIR = os.path.join(BASE_DIR, "models")
 os.makedirs(MODELS_DIR, exist_ok=True)
 
 # Rutas de los artefactos
@@ -1542,7 +1541,7 @@ print(f"     └─ Objetivo (≥82%):  {'✅ CUMPLIDO' if cv_scores.mean() >= T
 print(f"{'═'*60}")
 
 # %% [markdown]
-# ## 🧪 Paso 7 (Bonus): Verificación de carga del modelo
+# ## 🧪 Paso 7: Verificación de carga del modelo
 # Comprobamos que el modelo y vectorizador se pueden cargar correctamente
 # y producen predicciones válidas.
 

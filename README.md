@@ -695,6 +695,6 @@ ProyectoU2/
 
 <div align="center">
 
-[🌐 Ver Aplicación en Producción](https://pipeline-seguro.onrender.com) · [📊 Ver Pipeline en GitHub Actions](../../actions) · [📋 Ver Informe Técnico](./informe_proyecto.md)
+[🌐 Ver Aplicación en Producción](https://pipeline-seguro.onrender.com) · [📊 Ver Pipeline en GitHub Actions](../../actions) · [📋 Ver Informe Técnico](./InformeProyecto.pdf)
 
 </div>
